@@ -118,77 +118,81 @@
     </div>
 
     <script>
-    let serialsSet = new Set();
-
-    // 1. Fonction pour créer le Hash (doit être définie au début)
-    async function hashSN(string) {
-        const utf8 = new TextEncoder().encode(string);
-        const hashBuffer = await crypto.subtle.digest('SHA-256', utf8);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    }
-
-    // 2. Chargement discret de la base
-    fetch('data.json')
-        .then(response => {
-            if (!response.ok) throw new Error();
-            return response.json();
-        })
-        .then(data => {
-            serialsSet = new Set(data);
-            document.getElementById('status-db').style.display = "none";
-        })
-        .catch(err => {
-            const status = document.getElementById('status-db');
-            status.innerText = "⚠️ Erreur : Fichier data.json introuvable";
-            status.style.color = "var(--danger)";
-            status.style.background = "#fee2e2";
-            status.style.display = "block";
-        });
-
-    // 3. Logique de scan
-    async function onScanSuccess(decodedText) {
-        const container = document.getElementById('result-container');
-        const content = document.getElementById('result-content');
+        let serialsSet = new Set();
+        let lastScannedCode = null; // Variable pour éviter le clignotement
+    
+        async function hashSN(string) {
+            const utf8 = new TextEncoder().encode(string);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', utf8);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+    
+        fetch('data.json')
+            .then(response => {
+                if (!response.ok) throw new Error();
+                return response.json();
+            })
+            .then(data => {
+                serialsSet = new Set(data);
+                document.getElementById('status-db').style.display = "none";
+            })
+            .catch(err => {
+                const status = document.getElementById('status-db');
+                status.innerText = "⚠️ Erreur : Fichier data.json introuvable";
+                status.style.color = "var(--danger)";
+                status.style.display = "block";
+            });
+    
+        async function onScanSuccess(decodedText) {
+            const cleanText = decodedText.trim().toUpperCase();
+    
+            // BLOCAGE : Si c'est le même code que le scan précédent, on ne fait rien
+            if (cleanText === lastScannedCode) {
+                return; 
+            }
+            
+            lastScannedCode = cleanText; // On mémorise le nouveau code
+            
+            const container = document.getElementById('result-container');
+            const content = document.getElementById('result-content');
+            const hashedInput = await hashSN(cleanText);
         
-        // Nettoyage et mise en majuscules (pour matcher le script Python)
-        const cleanText = decodedText.trim().toUpperCase();
+            container.style.border = "none";
+        
+            if (serialsSet.has(hashedInput)) {
+                content.innerHTML = `
+                    <div class="status-card defect">
+                        <span class="big-icon">🛑</span>
+                        <strong>PSU défectueux</strong>
+                        <span class="sn-text">${cleanText}</span>
+                    </div>`;
+                if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+            } else {
+                content.innerHTML = `
+                    <div class="status-card ok">
+                        <span class="big-icon">✅</span>
+                        <strong>PSU OK</strong>
+                        <span class="sn-text">${cleanText}</span>
+                    </div>`;
+                if (navigator.vibrate) navigator.vibrate(50);
+            }
     
-        // Hachage du texte scanné
-        const hashedInput = await hashSN(cleanText);
-    
-        container.style.border = "none";
-    
-        if (serialsSet.has(hashedInput)) {
-            content.innerHTML = `
-                <div class="status-card defect">
-                    <span class="big-icon">🛑</span>
-                    <strong>PSU défectueux</strong>
-                    <span class="sn-text">${cleanText}</span>
-                </div>`;
-            if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-        } else {
-            content.innerHTML = `
-                <div class="status-card ok">
-                    <span class="big-icon">✅</span>
-                    <strong>PSU OK</strong>
-                    <span class="sn-text">${cleanText}</span>
-                </div>`;
-            if (navigator.vibrate) navigator.vibrate(50);
+            // OPTIONNEL : Réinitialiser le verrou après 3 secondes 
+            // pour permettre de rescanner le même produit si besoin
+            setTimeout(() => { lastScannedCode = null; }, 3000);
         }
-    }
-
-    // 4. Initialisation du scanner
-    let html5QrcodeScanner = new Html5QrcodeScanner(
-        "reader", 
-        { 
-            fps: 20, 
-            qrbox: {width: 280, height: 150},
-            aspectRatio: 1.0,
-            supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
-        }
-    );
-    html5QrcodeScanner.render(onScanSuccess);
+    
+        let html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader", 
+            { 
+                fps: 10, // On peut baisser un peu les FPS pour économiser la batterie
+                qrbox: {width: 280, height: 150},
+                aspectRatio: 1.0,
+                supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
+            }
+        );
+        html5QrcodeScanner.render(onScanSuccess);
     </script>
 </body>
 </html>

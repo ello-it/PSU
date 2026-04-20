@@ -3,68 +3,173 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Vérification Alimentations</title>
+    <title>Scanner SAV - Alimentations</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; margin: 0; padding: 20px; background: #f4f4f9; }
-        #reader { width: 100%; max-width: 500px; margin: auto; border-radius: 8px; overflow: hidden; }
-        #result { margin-top: 20px; padding: 20px; border-radius: 8px; font-weight: bold; font-size: 1.5rem; }
-        .defect { background: #ffebee; color: #c62828; border: 2px solid #c62828; }
-        .ok { background: #e8f5e9; color: #2e7d32; border: 2px solid #2e7d32; }
-        .loading { font-style: italic; color: #666; }
+        :root {
+            --primary: #2563eb;
+            --danger: #dc2626;
+            --success: #16a34a;
+            --bg: #f8fafc;
+        }
+
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            background-color: var(--bg);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: #1e293b;
+        }
+
+        .header {
+            background: white;
+            width: 100%;
+            padding: 1rem 0;
+            text-align: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+
+        h2 { margin: 0; font-size: 1.2rem; color: var(--primary); }
+
+        .container {
+            width: 90%;
+            max-width: 500px;
+            background: white;
+            padding: 20px;
+            border-radius: 16px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+        }
+
+        #status-db {
+            font-size: 0.8rem;
+            margin-bottom: 15px;
+            padding: 8px;
+            border-radius: 8px;
+            background: #f1f5f9;
+        }
+
+        #reader {
+            width: 100%;
+            border-radius: 12px;
+            overflow: hidden;
+            border: none !important;
+        }
+
+        /* Personnalisation des boutons internes du scanner */
+        #reader button {
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: none;
+            background-color: var(--primary);
+            color: white;
+            font-weight: 600;
+            margin-top: 10px;
+            cursor: pointer;
+        }
+
+        #result-container {
+            margin-top: 20px;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            border: 2px dashed #cbd5e1;
+        }
+
+        .status-card {
+            width: 100%;
+            padding: 20px;
+            text-align: center;
+            border-radius: 10px;
+            animation: slideUp 0.3s ease-out;
+        }
+
+        .defect { background: #fee2e2; color: var(--danger); border: 2px solid var(--danger); }
+        .ok { background: #dcfce7; color: var(--success); border: 2px solid var(--success); }
+
+        .sn-text { font-family: monospace; font-size: 1.2rem; display: block; margin-top: 5px; }
+        .big-icon { font-size: 2.5rem; display: block; margin-bottom: 5px; }
+
+        @keyframes slideUp {
+            from { transform: translateY(10px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
     </style>
 </head>
 <body>
 
-    <h2>Scan Serial Number</h2>
-    <div id="status-db" class="loading">Chargement de la base de données...</div>
-    
-    <div id="reader"></div>
-    <div id="result">Prêt à scanner</div>
+    <div class="header">
+        <h2>Contrôle Alimentations</h2>
+    </div>
+
+    <div class="container">
+        <div id="status-db">⏳ Chargement de la base...</div>
+        
+        <div id="reader"></div>
+
+        <div id="result-container">
+            <div id="result-content">Scannez un code-barres pour vérifier</div>
+        </div>
+    </div>
 
     <script>
         let serialsSet = new Set();
 
-        // 1. Chargement de la liste des 70 000 numéros
-        // Le fichier data.json doit être dans le même dossier
+        // 1. Chargement de la base
         fetch('data.json')
             .then(response => response.json())
             .then(data => {
                 serialsSet = new Set(data);
-                document.getElementById('status-db').innerText = `✅ Base prête (${serialsSet.size} numéros)`;
-                document.getElementById('status-db').classList.remove('loading');
+                const status = document.getElementById('status-db');
+                status.innerText = `✅ Base prête : ${serialsSet.size.toLocaleString()} numéros`;
+                status.style.color = "var(--success)";
             })
             .catch(err => {
-                document.getElementById('status-db').innerText = "❌ Erreur de chargement de la liste";
-                console.error(err);
+                document.getElementById('status-db').innerText = "❌ Erreur de base de données";
+                document.getElementById('status-db').style.color = "var(--danger)";
             });
 
-        // 2. Logique après scan
         function onScanSuccess(decodedText) {
-            const resultDiv = document.getElementById('result');
-            const cleanText = decodedText.trim(); // Nettoie les espaces éventuels
+            const container = document.getElementById('result-container');
+            const content = document.getElementById('result-content');
+            const cleanText = decodedText.trim();
+
+            container.style.border = "none";
 
             if (serialsSet.has(cleanText)) {
-                resultDiv.className = "defect";
-                resultDiv.innerHTML = `🛑 DÉFECTUEUX<br><small>${cleanText}</small>`;
+                content.innerHTML = `
+                    <div class="status-card defect">
+                        <span class="big-icon">🛑</span>
+                        <strong>UNITÉ DÉFECTUEUSE</strong>
+                        <span class="sn-text">${cleanText}</span>
+                    </div>`;
                 if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
             } else {
-                resultDiv.className = "ok";
-                resultDiv.innerHTML = `✅ CONFORME<br><small>${cleanText}</small>`;
+                content.innerHTML = `
+                    <div class="status-card ok">
+                        <span class="big-icon">✅</span>
+                        <strong>UNITÉ CONFORME</strong>
+                        <span class="sn-text">${cleanText}</span>
+                    </div>`;
                 if (navigator.vibrate) navigator.vibrate(50);
             }
         }
 
-        // 3. Lancement du scanner
-        function onScanFailure(error) {
-            // On ignore les erreurs de lecture pour ne pas polluer l'écran
-        }
-
         let html5QrcodeScanner = new Html5QrcodeScanner(
             "reader", 
-            { fps: 15, qrbox: {width: 250, height: 150} }
+            { 
+                fps: 20, 
+                qrbox: {width: 280, height: 150},
+                aspectRatio: 1.0 
+            }
         );
-        html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+        html5QrcodeScanner.render(onScanSuccess);
     </script>
 </body>
 </html>

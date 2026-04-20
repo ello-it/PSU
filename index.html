@@ -55,13 +55,14 @@
         }
 
         .container {
-            width: 90%;
+            width: 95%;
             max-width: 500px;
             background: white;
             padding: 20px;
             border-radius: 16px;
             box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
             margin-top: 20px;
+            box-sizing: border-box;
         }
 
         #status-db {
@@ -74,6 +75,18 @@
         }
 
         #reader { width: 100%; border-radius: 12px; overflow: hidden; border: none !important; }
+        
+        /* Style pour les boutons générés par la librairie */
+        #reader button {
+            padding: 10px 15px;
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            margin: 5px;
+            cursor: pointer;
+        }
 
         #result-container {
             margin-top: 20px;
@@ -93,12 +106,13 @@
             text-align: center;
             border-radius: 10px;
             animation: slideUp 0.3s ease-out;
+            box-sizing: border-box;
         }
 
         .defect { background: #fee2e2; color: var(--danger); border: 2px solid var(--danger); }
         .ok { background: #dcfce7; color: var(--success); border: 2px solid var(--success); }
 
-        .sn-text { font-family: monospace; font-size: 1.2rem; display: block; margin-top: 5px; }
+        .sn-text { font-family: monospace; font-size: 1.1rem; display: block; margin-top: 5px; word-break: break-all; }
         .big-icon { font-size: 2.5rem; display: block; margin-bottom: 5px; }
 
         @keyframes slideUp {
@@ -130,9 +144,33 @@
 
     <script>
         const i18n = {
-            fr: { title: "PSU ConnectBox", loading: "⏳ Chargement...", scanPrompt: "Scannez un code-barres", statusOk: "PSU OK", statusDefect: "PSU défectueux, à remplacer", errorDb: "⚠️ data.json introuvable" },
-            en: { title: "PSU ConnectBox", loading: "⏳ Loading...", scanPrompt: "Scan a barcode", statusOk: "PSU OK", statusDefect: "Defective PSU, to replace", errorDb: "⚠️ data.json not found" },
-            de: { title: "PSU ConnectBox", loading: "⏳ Laden...", scanPrompt: "Barcode scannen", statusOk: "PSU OK", statusDefect: "Defektes PSU, zu ersetzen", errorDb: "⚠️ data.json nicht gefunden" }
+            fr: { 
+                title: "PSU ConnectBox", 
+                loading: "⏳ Chargement...", 
+                scanPrompt: "Scannez un code-barres", 
+                statusOk: "PSU OK", 
+                statusDefect: "PSU défectueux, à remplacer", 
+                errorDb: "⚠️ data.json introuvable",
+                sc: { perm: "Accorder l'accès caméra", stop: "Arrêter le scan", file: "Scanner un fichier image" }
+            },
+            en: { 
+                title: "PSU ConnectBox", 
+                loading: "⏳ Loading...", 
+                scanPrompt: "Scan a barcode", 
+                statusOk: "PSU OK", 
+                statusDefect: "Defective PSU, to replace", 
+                errorDb: "⚠️ data.json not found",
+                sc: { perm: "Request Camera Permissions", stop: "Stop Scanning", file: "Scan an Image File" }
+            },
+            de: { 
+                title: "PSU ConnectBox", 
+                loading: "⏳ Laden...", 
+                scanPrompt: "Barcode scannen", 
+                statusOk: "PSU OK", 
+                statusDefect: "Defektes PSU, zu ersetzen", 
+                errorDb: "⚠️ data.json nicht gefunden",
+                sc: { perm: "Kamerazugriff erlauben", stop: "Scan stoppen", file: "Bilddatei scannen" }
+            }
         };
 
         let currentLang = localStorage.getItem('userLang') || (navigator.language.startsWith('de') ? 'de' : (navigator.language.startsWith('fr') ? 'fr' : 'en'));
@@ -154,9 +192,8 @@
         }
 
         function setLang(lang) {
-            currentLang = lang;
             localStorage.setItem('userLang', lang);
-            updateUI();
+            location.reload(); // Recharge pour traduire le moteur de scan
         }
 
         async function hashSN(string) {
@@ -166,7 +203,6 @@
             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
         }
 
-        // Chargement de la base
         fetch('data.json')
             .then(res => { if (!res.ok) throw new Error(); return res.json(); })
             .then(data => {
@@ -201,7 +237,18 @@
             setTimeout(() => { lastScannedCode = null; }, 3000);
         }
 
-        const scanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 150}, aspectRatio: 1.0 });
+        // Initialisation du scanner avec traductions
+        const scT = i18n[currentLang].sc;
+        const scanner = new Html5QrcodeScanner("reader", { 
+            fps: 10, 
+            qrbox: {width: 250, height: 150}, 
+            aspectRatio: 1.0,
+            i18n: {
+                "permissions-button": scT.perm,
+                "scanner-stop": scT.stop,
+                "file-scan-button": scT.file
+            }
+        });
         scanner.render(onScanSuccess);
 
         if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js'); }

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Vérification Alimentations</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        body { font-family: sans-serif; text-align: center; margin: 0; padding: 20px; background: #f4f4f9; }
+        #reader { width: 100%; max-width: 500px; margin: auto; border-radius: 8px; overflow: hidden; }
+        #result { margin-top: 20px; padding: 20px; border-radius: 8px; font-weight: bold; font-size: 1.5rem; }
+        .defect { background: #ffebee; color: #c62828; border: 2px solid #c62828; }
+        .ok { background: #e8f5e9; color: #2e7d32; border: 2px solid #2e7d32; }
+        .loading { font-style: italic; color: #666; }
+    </style>
+</head>
+<body>
+
+    <h2>Scan Serial Number</h2>
+    <div id="status-db" class="loading">Chargement de la base de données...</div>
+    
+    <div id="reader"></div>
+    <div id="result">Prêt à scanner</div>
+
+    <script>
+        let serialsSet = new Set();
+
+        // 1. Chargement de la liste des 70 000 numéros
+        // Le fichier data.json doit être dans le même dossier
+        fetch('data.json')
+            .then(response => response.json())
+            .then(data => {
+                serialsSet = new Set(data);
+                document.getElementById('status-db').innerText = `✅ Base prête (${serialsSet.size} numéros)`;
+                document.getElementById('status-db').classList.remove('loading');
+            })
+            .catch(err => {
+                document.getElementById('status-db').innerText = "❌ Erreur de chargement de la liste";
+                console.error(err);
+            });
+
+        // 2. Logique après scan
+        function onScanSuccess(decodedText) {
+            const resultDiv = document.getElementById('result');
+            const cleanText = decodedText.trim(); // Nettoie les espaces éventuels
+
+            if (serialsSet.has(cleanText)) {
+                resultDiv.className = "defect";
+                resultDiv.innerHTML = `🛑 DÉFECTUEUX<br><small>${cleanText}</small>`;
+                if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+            } else {
+                resultDiv.className = "ok";
+                resultDiv.innerHTML = `✅ CONFORME<br><small>${cleanText}</small>`;
+                if (navigator.vibrate) navigator.vibrate(50);
+            }
+        }
+
+        // 3. Lancement du scanner
+        function onScanFailure(error) {
+            // On ignore les erreurs de lecture pour ne pas polluer l'écran
+        }
+
+        let html5QrcodeScanner = new Html5QrcodeScanner(
+            "reader", 
+            { fps: 15, qrbox: {width: 250, height: 150} }
+        );
+        html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+    </script>
+</body>
+</html>

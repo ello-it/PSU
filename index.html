@@ -28,26 +28,31 @@
         .header {
             background: white;
             width: 100%;
-            padding: 1rem 0;
+            padding: 1.2rem 0;
             text-align: center;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
             position: relative;
         }
 
-        h2 { margin: 0; font-size: 1.2rem; color: var(--primary); }
+        h2 { margin: 0; font-size: 1.1rem; color: var(--primary); padding: 0 90px 0 20px; }
 
-        .lang-picker {
+        .lang-container {
             position: absolute;
-            right: 10px;
+            right: 15px;
             top: 50%;
             transform: translateY(-50%);
-            display: flex;
-            gap: 8px;
-            font-size: 1.2rem;
         }
 
-        .lang-btn { cursor: pointer; filter: grayscale(1); transition: 0.2s; }
-        .lang-btn.active { filter: grayscale(0); transform: scale(1.2); }
+        #lang-select {
+            padding: 6px 10px;
+            border-radius: 8px;
+            border: 1px solid #cbd5e1;
+            background: white;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #475569;
+            outline: none;
+        }
 
         .container {
             width: 90%;
@@ -65,20 +70,10 @@
             padding: 8px;
             border-radius: 8px;
             background: #f1f5f9;
+            text-align: center;
         }
 
         #reader { width: 100%; border-radius: 12px; overflow: hidden; border: none !important; }
-
-        #reader button {
-            padding: 10px 20px;
-            border-radius: 8px;
-            border: none;
-            background-color: var(--primary);
-            color: white;
-            font-weight: 600;
-            margin-top: 10px;
-            cursor: pointer;
-        }
 
         #result-container {
             margin-top: 20px;
@@ -115,72 +110,47 @@
 <body>
 
     <div class="header">
-    <h2 id="txt-title">PSU ConnectBox Sunrise</h2>
-    <div class="lang-container">
-        <select id="lang-select" onchange="setLang(this.value)">
-            <option value="fr">🇫🇷 FR</option>
-            <option value="de">🇩🇪 DE</option>
-            <option value="en">🇬🇧 EN</option>
-        </select>
+        <h2 id="txt-title">PSU ConnectBox</h2>
+        <div class="lang-container">
+            <select id="lang-select" onchange="setLang(this.value)">
+                <option value="fr">🇫🇷 FR</option>
+                <option value="de">🇩🇪 DE</option>
+                <option value="en">🇬🇧 EN</option>
+            </select>
+        </div>
     </div>
-</div>
 
-<div class="container">
-    <div id="status-db">⏳ Loading...</div>
-    <div id="reader"></div>
-    <div id="result-container">
-        <div id="result-content">---</div>
+    <div class="container">
+        <div id="status-db">⏳</div>
+        <div id="reader"></div>
+        <div id="result-container">
+            <div id="result-content">---</div>
+        </div>
     </div>
-</div>
-
 
     <script>
-        // 1. Dictionnaire de traduction
         const i18n = {
-            fr: {
-                title: "PSU ConnectBox Sunrise",
-                loading: "⏳ Chargement de la base...",
-                scanPrompt: "Scannez un code-barres pour vérifier",
-                statusOk: "PSU OK",
-                statusDefect: "PSU défectueux, à remplacer",
-                errorDb: "⚠️ Erreur : data.json introuvable"
-            },
-            en: {
-                title: "PSU ConnectBox Sunrise",
-                loading: "⏳ Loading database...",
-                scanPrompt: "Scan a barcode to verify",
-                statusOk: "PSU OK",
-                statusDefect: "Defective PSU, to replace",
-                errorDb: "⚠️ Error: data.json not found"
-            },
-            de: {
-                title: "PSU ConnectBox Sunrise",
-                loading: "⏳ Datenbank wird geladen...",
-                scanPrompt: "Barcode scannen zum Prüfen",
-                statusOk: "PSU OK",
-                statusDefect: "Defektes PSU, zu ersetzen",
-                errorDb: "⚠️ Fehler: data.json nicht gefunden"
-            }
+            fr: { title: "PSU ConnectBox", loading: "⏳ Chargement...", scanPrompt: "Scannez un code-barres", statusOk: "PSU OK", statusDefect: "PSU défectueux, à remplacer", errorDb: "⚠️ data.json introuvable" },
+            en: { title: "PSU ConnectBox", loading: "⏳ Loading...", scanPrompt: "Scan a barcode", statusOk: "PSU OK", statusDefect: "Defective PSU, to replace", errorDb: "⚠️ data.json not found" },
+            de: { title: "PSU ConnectBox", loading: "⏳ Laden...", scanPrompt: "Barcode scannen", statusOk: "PSU OK", statusDefect: "Defektes PSU, zu ersetzen", errorDb: "⚠️ data.json nicht gefunden" }
         };
 
-        // Détection de la langue (Navigateur ou choix précédent)
         let currentLang = localStorage.getItem('userLang') || (navigator.language.startsWith('de') ? 'de' : (navigator.language.startsWith('fr') ? 'fr' : 'en'));
+        let serialsSet = new Set();
+        let lastScannedCode = null;
 
         function updateUI() {
             const t = i18n[currentLang];
             document.getElementById('txt-title').innerText = t.title;
-            const statusDb = document.getElementById('status-db');
-            if (statusDb.style.display !== "none") statusDb.innerText = t.loading;
+            document.getElementById('lang-select').value = currentLang;
             
-            // On ne met à jour le prompt que s'il n'y a pas encore de résultat affiché
+            const statusDiv = document.getElementById('status-db');
+            if (statusDiv.style.display !== "none") statusDiv.innerText = t.loading;
+
             const resultContent = document.getElementById('result-content');
             if (!resultContent.querySelector('.status-card')) {
                 resultContent.innerText = t.scanPrompt;
             }
-
-            // Update flags
-            document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
-            document.getElementById('btn-' + currentLang).classList.add('active');
         }
 
         function setLang(lang) {
@@ -189,9 +159,6 @@
             updateUI();
         }
 
-        let serialsSet = new Set();
-        let lastScannedCode = null;
-
         async function hashSN(string) {
             const utf8 = new TextEncoder().encode(string);
             const hashBuffer = await crypto.subtle.digest('SHA-256', utf8);
@@ -199,65 +166,46 @@
             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
         }
 
+        // Chargement de la base
         fetch('data.json')
-            .then(response => {
-                if (!response.ok) throw new Error();
-                return response.json();
-            })
+            .then(res => { if (!res.ok) throw new Error(); return res.json(); })
             .then(data => {
                 serialsSet = new Set(data);
                 document.getElementById('status-db').style.display = "none";
                 updateUI();
             })
-            .catch(err => {
-                const status = document.getElementById('status-db');
-                status.innerText = i18n[currentLang].errorDb;
-                status.style.color = "var(--danger)";
-                status.style.display = "block";
+            .catch(() => {
+                const s = document.getElementById('status-db');
+                s.innerText = i18n[currentLang].errorDb;
+                s.style.color = "var(--danger)";
             });
 
         async function onScanSuccess(decodedText) {
             const cleanText = decodedText.trim().toUpperCase();
-            if (cleanText === lastScannedCode) return; 
-
+            if (cleanText === lastScannedCode) return;
             lastScannedCode = cleanText;
-            const container = document.getElementById('result-container');
+
             const content = document.getElementById('result-content');
             const hashedInput = await hashSN(cleanText);
             const t = i18n[currentLang];
 
-            container.style.border = "none";
+            document.getElementById('result-container').style.border = "none";
 
             if (serialsSet.has(hashedInput)) {
-                content.innerHTML = `
-                    <div class="status-card defect">
-                        <span class="big-icon">🛑</span>
-                        <strong>${t.statusDefect}</strong>
-                        <span class="sn-text">${cleanText}</span>
-                    </div>`;
+                content.innerHTML = `<div class="status-card defect"><span class="big-icon">🛑</span><strong>${t.statusDefect}</strong><span class="sn-text">${cleanText}</span></div>`;
                 if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
             } else {
-                content.innerHTML = `
-                    <div class="status-card ok">
-                        <span class="big-icon">✅</span>
-                        <strong>${t.statusOk}</strong>
-                        <span class="sn-text">${cleanText}</span>
-                    </div>`;
+                content.innerHTML = `<div class="status-card ok"><span class="big-icon">✅</span><strong>${t.statusOk}</strong><span class="sn-text">${cleanText}</span></div>`;
                 if (navigator.vibrate) navigator.vibrate(50);
             }
             setTimeout(() => { lastScannedCode = null; }, 3000);
         }
 
-        let html5QrcodeScanner = new Html5QrcodeScanner(
-            "reader", { fps: 10, qrbox: {width: 280, height: 150}, aspectRatio: 1.0, supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA] }
-        );
-        html5QrcodeScanner.render(onScanSuccess);
+        const scanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 150}, aspectRatio: 1.0 });
+        scanner.render(onScanSuccess);
 
         if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js'); }
-        
-        // Initialisation langue
         updateUI();
-
     </script>
 </body>
 </html>

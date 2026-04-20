@@ -149,7 +149,7 @@
             content.innerHTML = `
                 <div class="status-card defect">
                     <span class="big-icon">🛑</span>
-                    <strong>UNITÉ DÉFECTUEUSE</strong>
+                    <strong>PSU deffectueux</strong>
                     <span class="sn-text">${cleanText}</span>
                 </div>`;
             if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
@@ -157,7 +157,7 @@
             content.innerHTML = `
                 <div class="status-card ok">
                     <span class="big-icon">✅</span>
-                    <strong>UNITÉ CONFORME</strong>
+                    <strong>PSU OK</strong>
                     <span class="sn-text">${cleanText}</span>
                 </div>`;
             if (navigator.vibrate) navigator.vibrate(50);

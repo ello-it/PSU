@@ -138,18 +138,22 @@
             status.style.display = "block";
         });
 
-    function onScanSuccess(decodedText) {
+    async function onScanSuccess(decodedText) {
         const container = document.getElementById('result-container');
         const content = document.getElementById('result-content');
         const cleanText = decodedText.trim();
-
+    
+        // On calcule le hash du texte scanné
+        const hashedInput = await hashSN(cleanText);
+    
         container.style.border = "none";
-
-        if (serialsSet.has(cleanText)) {
+    
+        // On compare les hashs
+        if (serialsSet.has(hashedInput)) {
             content.innerHTML = `
                 <div class="status-card defect">
                     <span class="big-icon">🛑</span>
-                    <strong>PSU deffectueux</strong>
+                    <strong>PSU défectueux</strong>
                     <span class="sn-text">${cleanText}</span>
                 </div>`;
             if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
@@ -172,6 +176,14 @@
         aspectRatio: 1.0,
         // DESACTIVE L'UPLOAD DE FICHIER
         supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
+    }
+
+    // Fonction pour créer le Hash en JavaScript
+    async function hashSN(string) {
+        const utf8 = new TextEncoder().encode(string);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', utf8);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     }
 );
 html5QrcodeScanner.render(onScanSuccess);

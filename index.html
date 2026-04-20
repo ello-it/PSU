@@ -115,21 +115,24 @@
 <body>
 
     <div class="header">
-        <h2 id="txt-title">PSU ConnectBox Sunrise</h2>
-        <div class="lang-picker">
-            <span class="lang-btn" id="btn-fr" onclick="setLang('fr')">🇫🇷</span>
-            <span class="lang-btn" id="btn-de" onclick="setLang('de')">🇩🇪</span>
-            <span class="lang-btn" id="btn-en" onclick="setLang('en')">🇬🇧</span>
-        </div>
+    <h2 id="txt-title">PSU ConnectBox Sunrise</h2>
+    <div class="lang-container">
+        <select id="lang-select" onchange="setLang(this.value)">
+            <option value="fr">🇫🇷 FR</option>
+            <option value="de">🇩🇪 DE</option>
+            <option value="en">🇬🇧 EN</option>
+        </select>
     </div>
+</div>
 
-    <div class="container">
-        <div id="status-db">⏳ Loading...</div>
-        <div id="reader"></div>
-        <div id="result-container">
-            <div id="result-content">---</div>
-        </div>
+<div class="container">
+    <div id="status-db">⏳ Loading...</div>
+    <div id="reader"></div>
+    <div id="result-container">
+        <div id="result-content">---</div>
     </div>
+</div>
+
 
     <script>
         // 1. Dictionnaire de traduction

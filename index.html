@@ -58,7 +58,6 @@
             border: none !important;
         }
 
-        /* Personnalisation des boutons internes du scanner */
         #reader button {
             padding: 10px 20px;
             border-radius: 8px;
@@ -121,34 +120,45 @@
     <script>
     let serialsSet = new Set();
 
-    // 1. Chargement discret de la base
+    // 1. Fonction pour créer le Hash (doit être définie au début)
+    async function hashSN(string) {
+        const utf8 = new TextEncoder().encode(string);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', utf8);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    // 2. Chargement discret de la base
     fetch('data.json')
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) throw new Error();
+            return response.json();
+        })
         .then(data => {
             serialsSet = new Set(data);
-            // On cache simplement l'élément de statut si le chargement réussit
             document.getElementById('status-db').style.display = "none";
         })
         .catch(err => {
-            // On n'affiche le texte qu'en cas d'erreur
             const status = document.getElementById('status-db');
-            status.innerText = "⚠️ Erreur : Impossible de charger la liste des numéros (data.json)";
+            status.innerText = "⚠️ Erreur : Fichier data.json introuvable";
             status.style.color = "var(--danger)";
             status.style.background = "#fee2e2";
             status.style.display = "block";
         });
 
+    // 3. Logique de scan
     async function onScanSuccess(decodedText) {
         const container = document.getElementById('result-container');
         const content = document.getElementById('result-content');
-        const cleanText = decodedText.trim();
+        
+        // Nettoyage et mise en majuscules (pour matcher le script Python)
+        const cleanText = decodedText.trim().toUpperCase();
     
-        // On calcule le hash du texte scanné
+        // Hachage du texte scanné
         const hashedInput = await hashSN(cleanText);
     
         container.style.border = "none";
     
-        // On compare les hashs
         if (serialsSet.has(hashedInput)) {
             content.innerHTML = `
                 <div class="status-card defect">
@@ -168,25 +178,17 @@
         }
     }
 
+    // 4. Initialisation du scanner
     let html5QrcodeScanner = new Html5QrcodeScanner(
-    "reader", 
-    { 
-        fps: 20, 
-        qrbox: {width: 280, height: 150},
-        aspectRatio: 1.0,
-        // DESACTIVE L'UPLOAD DE FICHIER
-        supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
-    }
-
-    // Fonction pour créer le Hash en JavaScript
-    async function hashSN(string) {
-        const utf8 = new TextEncoder().encode(string);
-        const hashBuffer = await crypto.subtle.digest('SHA-256', utf8);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    }
-);
-html5QrcodeScanner.render(onScanSuccess);
-</script>
+        "reader", 
+        { 
+            fps: 20, 
+            qrbox: {width: 280, height: 150},
+            aspectRatio: 1.0,
+            supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
+        }
+    );
+    html5QrcodeScanner.render(onScanSuccess);
+    </script>
 </body>
 </html>

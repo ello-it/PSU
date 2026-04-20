@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
-<title>Scanner PSU</title>
+    <link rel="apple-touch-icon" href="apple-touch-icon.png">
+    <title>Scanner PSU</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root {
@@ -31,10 +31,23 @@
             padding: 1rem 0;
             text-align: center;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
+            position: relative;
         }
 
         h2 { margin: 0; font-size: 1.2rem; color: var(--primary); }
+
+        .lang-picker {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            gap: 8px;
+            font-size: 1.2rem;
+        }
+
+        .lang-btn { cursor: pointer; filter: grayscale(1); transition: 0.2s; }
+        .lang-btn.active { filter: grayscale(0); transform: scale(1.2); }
 
         .container {
             width: 90%;
@@ -43,6 +56,7 @@
             padding: 20px;
             border-radius: 16px;
             box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+            margin-top: 20px;
         }
 
         #status-db {
@@ -53,12 +67,7 @@
             background: #f1f5f9;
         }
 
-        #reader {
-            width: 100%;
-            border-radius: 12px;
-            overflow: hidden;
-            border: none !important;
-        }
+        #reader { width: 100%; border-radius: 12px; overflow: hidden; border: none !important; }
 
         #reader button {
             padding: 10px 20px;
@@ -106,30 +115,87 @@
 <body>
 
     <div class="header">
-        <h2>PSU ConnectBox Sunrise</h2>
+        <h2 id="txt-title">PSU ConnectBox Sunrise</h2>
+        <div class="lang-picker">
+            <span class="lang-btn" id="btn-fr" onclick="setLang('fr')">🇫🇷</span>
+            <span class="lang-btn" id="btn-de" onclick="setLang('de')">🇩🇪</span>
+            <span class="lang-btn" id="btn-en" onclick="setLang('en')">🇬🇧</span>
+        </div>
     </div>
 
     <div class="container">
-        <div id="status-db">⏳ Chargement de la base...</div>
-        
+        <div id="status-db">⏳ Loading...</div>
         <div id="reader"></div>
-
         <div id="result-container">
-            <div id="result-content">Scannez un code-barres pour vérifier</div>
+            <div id="result-content">---</div>
         </div>
     </div>
 
     <script>
+        // 1. Dictionnaire de traduction
+        const i18n = {
+            fr: {
+                title: "PSU ConnectBox Sunrise",
+                loading: "⏳ Chargement de la base...",
+                scanPrompt: "Scannez un code-barres pour vérifier",
+                statusOk: "PSU OK",
+                statusDefect: "PSU défectueux, à remplacer",
+                errorDb: "⚠️ Erreur : data.json introuvable"
+            },
+            en: {
+                title: "PSU ConnectBox Sunrise",
+                loading: "⏳ Loading database...",
+                scanPrompt: "Scan a barcode to verify",
+                statusOk: "PSU OK",
+                statusDefect: "Defective PSU, to replace",
+                errorDb: "⚠️ Error: data.json not found"
+            },
+            de: {
+                title: "PSU ConnectBox Sunrise",
+                loading: "⏳ Datenbank wird geladen...",
+                scanPrompt: "Barcode scannen zum Prüfen",
+                statusOk: "PSU OK",
+                statusDefect: "Defektes PSU, zu ersetzen",
+                errorDb: "⚠️ Fehler: data.json nicht gefunden"
+            }
+        };
+
+        // Détection de la langue (Navigateur ou choix précédent)
+        let currentLang = localStorage.getItem('userLang') || (navigator.language.startsWith('de') ? 'de' : (navigator.language.startsWith('fr') ? 'fr' : 'en'));
+
+        function updateUI() {
+            const t = i18n[currentLang];
+            document.getElementById('txt-title').innerText = t.title;
+            const statusDb = document.getElementById('status-db');
+            if (statusDb.style.display !== "none") statusDb.innerText = t.loading;
+            
+            // On ne met à jour le prompt que s'il n'y a pas encore de résultat affiché
+            const resultContent = document.getElementById('result-content');
+            if (!resultContent.querySelector('.status-card')) {
+                resultContent.innerText = t.scanPrompt;
+            }
+
+            // Update flags
+            document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('btn-' + currentLang).classList.add('active');
+        }
+
+        function setLang(lang) {
+            currentLang = lang;
+            localStorage.setItem('userLang', lang);
+            updateUI();
+        }
+
         let serialsSet = new Set();
-        let lastScannedCode = null; // Variable pour éviter le clignotement
-    
+        let lastScannedCode = null;
+
         async function hashSN(string) {
             const utf8 = new TextEncoder().encode(string);
             const hashBuffer = await crypto.subtle.digest('SHA-256', utf8);
             const hashArray = Array.from(new Uint8Array(hashBuffer));
             return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
         }
-    
+
         fetch('data.json')
             .then(response => {
                 if (!response.ok) throw new Error();
@@ -138,35 +204,32 @@
             .then(data => {
                 serialsSet = new Set(data);
                 document.getElementById('status-db').style.display = "none";
+                updateUI();
             })
             .catch(err => {
                 const status = document.getElementById('status-db');
-                status.innerText = "⚠️ Erreur : Fichier data.json introuvable";
+                status.innerText = i18n[currentLang].errorDb;
                 status.style.color = "var(--danger)";
                 status.style.display = "block";
             });
-    
+
         async function onScanSuccess(decodedText) {
             const cleanText = decodedText.trim().toUpperCase();
-    
-            // BLOCAGE : Si c'est le même code que le scan précédent, on ne fait rien
-            if (cleanText === lastScannedCode) {
-                return; 
-            }
-            
-            lastScannedCode = cleanText; // On mémorise le nouveau code
-            
+            if (cleanText === lastScannedCode) return; 
+
+            lastScannedCode = cleanText;
             const container = document.getElementById('result-container');
             const content = document.getElementById('result-content');
             const hashedInput = await hashSN(cleanText);
-        
+            const t = i18n[currentLang];
+
             container.style.border = "none";
-        
+
             if (serialsSet.has(hashedInput)) {
                 content.innerHTML = `
                     <div class="status-card defect">
                         <span class="big-icon">🛑</span>
-                        <strong>PSU deffect, to replace</strong>
+                        <strong>${t.statusDefect}</strong>
                         <span class="sn-text">${cleanText}</span>
                     </div>`;
                 if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
@@ -174,29 +237,23 @@
                 content.innerHTML = `
                     <div class="status-card ok">
                         <span class="big-icon">✅</span>
-                        <strong>PSU OK</strong>
+                        <strong>${t.statusOk}</strong>
                         <span class="sn-text">${cleanText}</span>
                     </div>`;
                 if (navigator.vibrate) navigator.vibrate(50);
             }
-    
-            // OPTIONNEL : Réinitialiser le verrou après 3 secondes 
-            // pour permettre de rescanner le même produit si besoin
             setTimeout(() => { lastScannedCode = null; }, 3000);
         }
-    
+
         let html5QrcodeScanner = new Html5QrcodeScanner(
-            "reader", 
-            { 
-                fps: 10, // On peut baisser un peu les FPS pour économiser la batterie
-                qrbox: {width: 280, height: 150},
-                aspectRatio: 1.0,
-                supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
-            }
+            "reader", { fps: 10, qrbox: {width: 280, height: 150}, aspectRatio: 1.0, supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA] }
         );
         html5QrcodeScanner.render(onScanSuccess);
 
-if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js'); }
+        if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js'); }
+        
+        // Initialisation langue
+        updateUI();
 
     </script>
 </body>

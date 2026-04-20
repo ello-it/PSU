@@ -119,57 +119,60 @@
     </div>
 
     <script>
-        let serialsSet = new Set();
+    let serialsSet = new Set();
 
-        // 1. Chargement de la base
-        fetch('data.json')
-            .then(response => response.json())
-            .then(data => {
-                serialsSet = new Set(data);
-                const status = document.getElementById('status-db');
-                status.innerText = `✅ Base prête : ${serialsSet.size.toLocaleString()} numéros`;
-                status.style.color = "var(--success)";
-            })
-            .catch(err => {
-                document.getElementById('status-db').innerText = "❌ Erreur de base de données";
-                document.getElementById('status-db').style.color = "var(--danger)";
-            });
+    // 1. Chargement discret de la base
+    fetch('data.json')
+        .then(response => response.json())
+        .then(data => {
+            serialsSet = new Set(data);
+            // On cache simplement l'élément de statut si le chargement réussit
+            document.getElementById('status-db').style.display = "none";
+        })
+        .catch(err => {
+            // On n'affiche le texte qu'en cas d'erreur
+            const status = document.getElementById('status-db');
+            status.innerText = "⚠️ Erreur : Impossible de charger la liste des numéros (data.json)";
+            status.style.color = "var(--danger)";
+            status.style.background = "#fee2e2";
+            status.style.display = "block";
+        });
 
-        function onScanSuccess(decodedText) {
-            const container = document.getElementById('result-container');
-            const content = document.getElementById('result-content');
-            const cleanText = decodedText.trim();
+    function onScanSuccess(decodedText) {
+        const container = document.getElementById('result-container');
+        const content = document.getElementById('result-content');
+        const cleanText = decodedText.trim();
 
-            container.style.border = "none";
+        container.style.border = "none";
 
-            if (serialsSet.has(cleanText)) {
-                content.innerHTML = `
-                    <div class="status-card defect">
-                        <span class="big-icon">🛑</span>
-                        <strong>UNITÉ DÉFECTUEUSE</strong>
-                        <span class="sn-text">${cleanText}</span>
-                    </div>`;
-                if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-            } else {
-                content.innerHTML = `
-                    <div class="status-card ok">
-                        <span class="big-icon">✅</span>
-                        <strong>UNITÉ CONFORME</strong>
-                        <span class="sn-text">${cleanText}</span>
-                    </div>`;
-                if (navigator.vibrate) navigator.vibrate(50);
-            }
+        if (serialsSet.has(cleanText)) {
+            content.innerHTML = `
+                <div class="status-card defect">
+                    <span class="big-icon">🛑</span>
+                    <strong>UNITÉ DÉFECTUEUSE</strong>
+                    <span class="sn-text">${cleanText}</span>
+                </div>`;
+            if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        } else {
+            content.innerHTML = `
+                <div class="status-card ok">
+                    <span class="big-icon">✅</span>
+                    <strong>UNITÉ CONFORME</strong>
+                    <span class="sn-text">${cleanText}</span>
+                </div>`;
+            if (navigator.vibrate) navigator.vibrate(50);
         }
+    }
 
-        let html5QrcodeScanner = new Html5QrcodeScanner(
-            "reader", 
-            { 
-                fps: 20, 
-                qrbox: {width: 280, height: 150},
-                aspectRatio: 1.0 
-            }
-        );
-        html5QrcodeScanner.render(onScanSuccess);
-    </script>
+    let html5QrcodeScanner = new Html5QrcodeScanner(
+        "reader", 
+        { 
+            fps: 20, 
+            qrbox: {width: 280, height: 150},
+            aspectRatio: 1.0 
+        }
+    );
+    html5QrcodeScanner.render(onScanSuccess);
+</script>
 </body>
 </html>

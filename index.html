@@ -46,7 +46,6 @@
             margin-top: 15px; box-sizing: border-box;
         }
 
-        /* RÉSULTAT — collé en haut, toujours visible */
         #result-container {
             position: sticky;
             top: 0;
@@ -152,7 +151,6 @@
     </div>
 
     <div class="container">
-        <!-- RÉSULTAT TOUT EN HAUT -->
         <div id="result-container">
             <div id="result-content" class="waiting">---</div>
         </div>
@@ -196,6 +194,10 @@
             de: { title: "PSU ConnectBox", scanPrompt: "Bereit zum Scannen", statusOk: "PSU OK", statusDefect: "PSU Defekt", btnStart: "📷 Starten", btnStop: "Stopp" }
         };
 
+        // Détection plateforme
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) 
+                      || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
         let currentLang = localStorage.getItem('userLang') || 'fr';
         let serialsSet = new Set();
         let lastScannedCode = null;
@@ -236,18 +238,14 @@
             .catch(() => console.error("Erreur data.json"));
 
         // =============================================================
-        //  FEEDBACK : Son + Vibration
+        //  SON + VIBRATION
         // =============================================================
         function initAudio() {
-            // L'AudioContext doit être créé/démarré après une interaction utilisateur
             if (!audioCtx) {
                 try {
                     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                } catch (e) {
-                    console.warn("AudioContext indisponible");
-                }
+                } catch (e) {}
             }
-            // Reprendre si suspendu (iOS / Chrome mobile)
             if (audioCtx && audioCtx.state === 'suspended') {
                 audioCtx.resume();
             }
@@ -264,7 +262,6 @@
                 gain.connect(audioCtx.destination);
 
                 if (type === 'ok') {
-                    // Bip simple aigu
                     osc.frequency.value = 1200;
                     osc.type = 'sine';
                     gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
@@ -272,7 +269,6 @@
                     osc.start();
                     osc.stop(audioCtx.currentTime + 0.15);
                 } else {
-                    // Double bip grave pour défaut
                     osc.frequency.value = 400;
                     osc.type = 'square';
                     gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
@@ -282,19 +278,14 @@
                     osc.start();
                     osc.stop(audioCtx.currentTime + 0.4);
                 }
-            } catch (e) {
-                console.warn("Erreur son", e);
-            }
+            } catch (e) {}
         }
 
         function triggerFeedback(type) {
             playBeep(type);
             if (navigator.vibrate) {
-                if (type === 'defect') {
-                    navigator.vibrate([200, 100, 200]);
-                } else {
-                    navigator.vibrate(80);
-                }
+                if (type === 'defect') navigator.vibrate([200, 100, 200]);
+                else navigator.vibrate(80);
             }
         }
 
@@ -303,10 +294,15 @@
         // =============================================================
         async function listCameras() {
             try {
-                const tmp = await navigator.mediaDevices.getUserMedia({ video: true });
+                // Sur iOS, cette requête initiale est cruciale :
+                // sans ça, enumerateDevices() renvoie des labels vides
+                const tmp = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: 'environment' } 
+                });
                 tmp.getTracks().forEach(t => t.stop());
             } catch (e) {
-                return [];
+                console.warn("Permission initiale refusée", e);
+                throw e;
             }
 
             const devices = await navigator.mediaDevices.enumerateDevices();
@@ -314,6 +310,8 @@
 
             const backCams = cams.filter(c => {
                 const label = (c.label || '').toLowerCase();
+                // iOS labels : "Back Camera", "Back Dual Camera", "Back Triple Camera", "Back Ultra Wide Camera"
+                // Android labels : "camera2 0, facing back", etc.
                 return !label.includes('front') && !label.includes('user') && !label.includes('face');
             });
 
@@ -323,10 +321,18 @@
         function pickBestCameraForMacro(cameras) {
             for (const cam of cameras) {
                 const label = (cam.label || '').toLowerCase();
+                // iOS : "Back Ultra Wide Camera" est la meilleure pour macro
+                if (label.includes('ultra wide') || label.includes('ultra-wide')) {
+                    return cam.deviceId;
+                }
+            }
+            for (const cam of cameras) {
+                const label = (cam.label || '').toLowerCase();
                 if (label.includes('ultra') || (label.includes('wide') && !label.includes('tele'))) {
                     return cam.deviceId;
                 }
             }
+            // Pattern Samsung Android
             const samsungUltra = cameras.find(c => /camera2\s*2/i.test(c.label || ''));
             if (samsungUltra) return samsungUltra.deviceId;
             return cameras[0]?.deviceId;
@@ -334,15 +340,22 @@
 
         function friendlyCameraName(label, index) {
             const l = (label || '').toLowerCase();
+            if (l.includes('ultra wide') || l.includes('ultra-wide')) return `🔬 Ultra grand angle (macro)`;
             if (l.includes('ultra') || /camera2\s*2/i.test(label)) return `🔬 Ultra-grand angle (macro)`;
-            if (l.includes('tele') || /camera2\s*3/i.test(label)) return `🔭 Téléobjectif`;
-            if (/camera2\s*0/i.test(label)) return `📷 Principale`;
+            if (l.includes('telephoto') || l.includes('tele') || /camera2\s*3/i.test(label)) return `🔭 Téléobjectif`;
+            if (l.includes('triple')) return `📷 Triple caméra (principale)`;
+            if (l.includes('dual')) return `📷 Double caméra (principale)`;
+            if (l.includes('back camera') || /camera2\s*0/i.test(label)) return `📷 Caméra principale`;
             return `📷 ${label || `Caméra ${index + 1}`}`;
         }
 
         async function populateCameraSelector() {
-            availableCameras = await listCameras();
-            if (availableCameras.length === 0) return;
+            try {
+                availableCameras = await listCameras();
+            } catch (e) {
+                return false;
+            }
+            if (availableCameras.length === 0) return false;
 
             const select = document.getElementById('camera-selector');
             select.innerHTML = '';
@@ -362,6 +375,7 @@
             if (availableCameras.length > 1) {
                 document.getElementById('camera-selector-container').style.display = 'block';
             }
+            return true;
         }
 
         async function detectEngine() {
@@ -376,22 +390,29 @@
         }
 
         async function startCamera() {
-            // Initialiser l'audio dans le click utilisateur (obligatoire sur mobile)
             initAudio();
 
-            await populateCameraSelector();
+            const ok = await populateCameraSelector();
+            if (!ok) {
+                alert("Impossible d'accéder à la caméra. Vérifiez les autorisations du navigateur (Réglages → Safari/Chrome → Appareil photo).");
+                return;
+            }
+
             engine = await detectEngine();
 
             document.getElementById('result-content').className = 'waiting';
             document.getElementById('result-content').innerText = i18n[currentLang].scanPrompt;
             document.getElementById('btn-start').style.display = 'none';
             document.getElementById('btn-stop').style.display = 'inline-block';
-            document.getElementById('btn-flash').style.display = 'inline-block';
+            // Flash pas supporté sur iOS Safari
+            if (!isIOS) {
+                document.getElementById('btn-flash').style.display = 'inline-block';
+            }
             document.getElementById('tip-banner').style.display = 'block';
 
             const tag = document.getElementById('engine-tag');
             tag.style.display = 'block';
-            tag.innerText = engine === 'native' ? '⚡ Native' : '🔁 Fallback';
+            tag.innerText = engine === 'native' ? '⚡ Native' : (isIOS ? '🍎 iOS' : '🔁 Fallback');
 
             if (engine === 'native') {
                 await startNative();
@@ -412,7 +433,25 @@
             }
         }
 
+        // =============================================================
+        //  CONSTRUCTION DES CONTRAINTES VIDÉO
+        //  iOS : facingMode + deviceId sans "exact"
+        //  Android : deviceId avec "exact"
+        // =============================================================
         function buildVideoConstraints() {
+            if (isIOS) {
+                // iOS : approche souple. Pas de deviceId avec exact, pas de resolution forcée.
+                // Safari choisit automatiquement et supporte mal les contraintes strictes.
+                if (currentCameraId) {
+                    return {
+                        deviceId: currentCameraId,  // sans "exact" sur iOS
+                        facingMode: 'environment'
+                    };
+                }
+                return { facingMode: 'environment' };
+            }
+
+            // Android : on peut demander une haute résolution et un deviceId strict
             const constraints = {
                 width: { ideal: 1920 },
                 height: { ideal: 1080 }
@@ -459,7 +498,8 @@
                 nativeDetector = new BarcodeDetector({ formats: ['code_128'] });
                 detectLoop(video);
             } catch (err) {
-                alert("Erreur Caméra : " + err.message);
+                console.error(err);
+                alert("Erreur Caméra (native) : " + err.message + "\nBasculement sur le mode secours.");
                 engine = 'fallback';
                 document.getElementById('engine-tag').innerText = '🔁 Fallback';
                 await startFallback();
@@ -479,18 +519,34 @@
 
         async function startFallback() {
             html5QrCode = new Html5Qrcode("reader");
+
+            // Sur iOS on utilise des contraintes minimales pour éviter les erreurs OverconstrainedError
             const config = { 
-                fps: 10,
+                fps: isIOS ? 15 : 10,
                 qrbox: (w, h) => ({ width: w * 0.9, height: h * 0.4 }),
                 formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128 ],
-                videoConstraints: buildVideoConstraints()
+                videoConstraints: buildVideoConstraints(),
+                // disableFlip utile sur iOS pour le miroir
+                disableFlip: false
             };
 
+            // Sur iOS, html5-qrcode accepte mieux un string deviceId qu'un objet complexe
+            let cameraIdOrConfig = undefined;
+            if (isIOS && currentCameraId) {
+                cameraIdOrConfig = currentCameraId;
+            }
+
             try {
-                await html5QrCode.start(undefined, config, onScanSuccess);
+                if (isIOS && currentCameraId) {
+                    // Pour iOS, passer directement le deviceId
+                    await html5QrCode.start(currentCameraId, config, onScanSuccess);
+                } else {
+                    await html5QrCode.start(undefined, config, onScanSuccess);
+                }
+
                 const track = html5QrCode.getVideoTrack ? html5QrCode.getVideoTrack() : null;
                 if (track) {
-                    const capabilities = track.getCapabilities();
+                    const capabilities = track.getCapabilities ? track.getCapabilities() : {};
                     if (capabilities.zoom) {
                         document.getElementById('zoom-panel').style.display = 'flex';
                         const slider = document.getElementById('zoom-range');
@@ -501,7 +557,21 @@
                     }
                 }
             } catch (err) {
-                alert("Erreur Caméra : " + err.message);
+                console.error("Erreur fallback :", err);
+                // Dernier fallback : on tente avec facingMode uniquement
+                try {
+                    await html5QrCode.start(
+                        { facingMode: "environment" },
+                        { 
+                            fps: 10,
+                            qrbox: (w, h) => ({ width: w * 0.9, height: h * 0.4 }),
+                            formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128 ]
+                        },
+                        onScanSuccess
+                    );
+                } catch (err2) {
+                    alert("Erreur Caméra : " + err2.message + "\n\nVérifiez que la caméra est autorisée dans les réglages du navigateur.");
+                }
             }
         }
 
@@ -530,6 +600,10 @@
         }
 
         async function toggleFlash() {
+            if (isIOS) {
+                alert("Le flash n'est pas supporté sur iOS Safari.");
+                return;
+            }
             const track = getActiveTrack();
             if (!track) return;
             isFlashOn = !isFlashOn;

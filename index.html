@@ -98,7 +98,6 @@
 
         button:active { opacity: 0.8; }
 
-        /* Style pour le curseur de zoom */
         #zoom-panel {
             width: 100%;
             display: none;
@@ -166,7 +165,7 @@
             </div>
             
             <div id="zoom-panel">
-                <label style="font-size: 0.7rem; font-weight: bold; color: #475569;">🔍 ZOOM OPTIMISÉ</label>
+                <label style="font-size: 0.7rem; font-weight: bold; color: #475569;">🔍 ZOOM</label>
                 <input type="range" id="zoom-range" min="1" max="5" step="0.1" value="1" oninput="applyZoom(this.value)">
             </div>
         </div>
@@ -212,44 +211,57 @@
             .then(data => { serialsSet = new Set(data); })
             .catch(() => console.error("Erreur data.json"));
 
-        function startCamera() {
+        async function startCamera() {
+            if (html5QrCode) { await html5QrCode.clear(); }
             html5QrCode = new Html5Qrcode("reader");
+            
             const config = { 
                 fps: 25, 
                 qrbox: (w, h) => { return { width: w * 0.9, height: h * 0.4 }; },
                 formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128 ]
             };
 
-            // Contraintes vidéo pour forcer la meilleure caméra arrière et l'autofocus
-            const videoConstraints = {
-                facingMode: "environment",
-                focusMode: "continuous"
-            };
+            // Strategie de fallback : on tente le mode avancé, sinon on prend le mode simple
+            try {
+                await html5QrCode.start(
+                    { facingMode: "environment" }, 
+                    config, 
+                    onScanSuccess
+                );
+                onCameraStarted();
+            } catch (err) {
+                console.warn("Échec mode environnement, tentative mode simple...", err);
+                try {
+                    await html5QrCode.start(
+                        { deviceId: { undefined } }, // Laisse le navigateur décider du device
+                        config, 
+                        onScanSuccess
+                    );
+                    onCameraStarted();
+                } catch (lastErr) {
+                    alert("Erreur Caméra : Assurez-vous de ne pas avoir une autre application utilisant la caméra ouverte.");
+                }
+            }
+        }
 
-            html5QrCode.start(
-                videoConstraints, 
-                config, 
-                onScanSuccess
-            ).then(() => {
-                document.getElementById('btn-start').style.display = 'none';
-                document.getElementById('btn-stop').style.display = 'inline-block';
-                document.getElementById('btn-flash').style.display = 'inline-block';
-                document.getElementById('zoom-panel').style.display = 'flex';
-                document.getElementById('result-content').innerText = i18n[currentLang].scanPrompt;
+        function onCameraStarted() {
+            document.getElementById('btn-start').style.display = 'none';
+            document.getElementById('btn-stop').style.display = 'inline-block';
+            document.getElementById('btn-flash').style.display = 'inline-block';
+            document.getElementById('result-content').innerText = i18n[currentLang].scanPrompt;
 
-                // Configurer le slider de zoom selon les capacités réelles du mobile
-                const track = html5QrCode.getVideoTrack();
+            const track = html5QrCode.getVideoTrack();
+            if (track) {
                 const capabilities = track.getCapabilities();
                 if (capabilities.zoom) {
+                    document.getElementById('zoom-panel').style.display = 'flex';
                     const slider = document.getElementById('zoom-range');
                     slider.min = capabilities.zoom.min;
                     slider.max = capabilities.zoom.max;
                     slider.step = capabilities.zoom.step;
                     slider.value = capabilities.zoom.min;
                 }
-            }).catch(err => {
-                alert("Erreur Caméra : Assurez-vous d'autoriser l'accès.");
-            });
+            }
         }
 
         function applyZoom(val) {
@@ -262,7 +274,7 @@
 
         function stopCamera() {
             if (html5QrCode) {
-                html5QrCode.stop().then(() => location.reload());
+                html5QrCode.stop().then(() => location.reload()).catch(() => location.reload());
             }
         }
 
@@ -270,7 +282,7 @@
             isFlashOn = !isFlashOn;
             html5QrCode.applyVideoConstraints({
                 advanced: [{ torch: isFlashOn }]
-            }).catch(() => alert("Flash indisponible."));
+            }).catch(() => alert("Flash indisponible sur cette caméra."));
         }
 
         async function onScanSuccess(decodedText) {

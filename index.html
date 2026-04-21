@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
-    <title>Sunrise PSU Scan</title>
+    <title>Sunrise PSU Scan Pro</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root {
@@ -36,133 +36,77 @@
 
         h2 { margin: 0; font-size: 1.1rem; color: var(--primary); padding-right: 85px; padding-left: 15px; }
 
-        .lang-container {
-            position: absolute;
-            right: 10px;
-            top: 50%;
-            transform: translateY(-50%);
-        }
-
-        #lang-select {
-            padding: 6px;
-            border-radius: 8px;
-            border: 1px solid #cbd5e1;
-            font-size: 0.8rem;
-            font-weight: 600;
-        }
+        .lang-container { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); }
+        #lang-select { padding: 6px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 0.8rem; font-weight: 600; }
 
         .container {
-            width: 95%;
-            max-width: 500px;
-            background: white;
-            padding: 15px;
-            border-radius: 16px;
+            width: 95%; max-width: 500px; background: white;
+            padding: 15px; border-radius: 16px;
             box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
-            margin-top: 15px;
-            box-sizing: border-box;
+            margin-top: 15px; box-sizing: border-box;
         }
 
         #reader { 
-            width: 100%; 
-            border-radius: 12px; 
-            overflow: hidden; 
-            background: #000;
-            min-height: 300px;
-            position: relative;
+            width: 100%; border-radius: 12px; overflow: hidden; 
+            background: #000; min-height: 300px; position: relative;
         }
 
-        #native-video {
-            width: 100%;
-            display: block;
-            background: #000;
-            border-radius: 12px;
-        }
+        #native-video { width: 100%; display: block; background: #000; border-radius: 12px; }
 
         #scan-overlay {
-            position: absolute;
-            top: 30%;
-            left: 5%;
-            width: 90%;
-            height: 40%;
+            position: absolute; top: 30%; left: 5%;
+            width: 90%; height: 40%;
             border: 2px solid rgba(37, 99, 235, 0.8);
-            border-radius: 8px;
-            pointer-events: none;
+            border-radius: 8px; pointer-events: none;
             box-shadow: 0 0 0 9999px rgba(0,0,0,0.25);
         }
         
-        .controls {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 10px;
-            margin: 15px 0;
-        }
-
-        .btn-group {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
+        .controls { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 15px 0; }
+        .btn-group { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; }
 
         button {
-            padding: 12px 20px;
-            background-color: var(--primary);
-            color: white;
-            border: none;
-            border-radius: 10px;
-            font-weight: 600;
-            cursor: pointer;
-            font-size: 0.9rem;
-            transition: opacity 0.2s;
+            padding: 12px 20px; background-color: var(--primary); color: white;
+            border: none; border-radius: 10px; font-weight: 600;
+            cursor: pointer; font-size: 0.9rem;
         }
+
+        #camera-selector {
+            width: 100%; padding: 10px; border-radius: 10px;
+            border: 2px solid var(--primary); font-size: 0.9rem;
+            font-weight: 600; background: white; color: var(--primary);
+        }
+        #camera-selector-container { width: 100%; display: none; }
 
         #zoom-panel {
-            width: 100%;
-            display: none;
-            flex-direction: column;
-            align-items: center;
-            background: #f1f5f9;
-            padding: 10px;
-            border-radius: 10px;
-            box-sizing: border-box;
+            width: 100%; display: none; flex-direction: column;
+            align-items: center; background: #f1f5f9;
+            padding: 10px; border-radius: 10px; box-sizing: border-box;
         }
-
         input[type=range] { width: 100%; height: 30px; }
 
         #result-container {
-            margin-top: 15px;
-            min-height: 110px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 12px;
-            border: 2px dashed #cbd5e1;
+            margin-top: 15px; min-height: 110px;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 12px; border: 2px dashed #cbd5e1;
         }
 
-        .status-card {
-            width: 100%;
-            padding: 20px;
-            text-align: center;
-            border-radius: 10px;
-            animation: slideUp 0.3s ease-out;
-        }
-
+        .status-card { width: 100%; padding: 20px; text-align: center; border-radius: 10px; animation: slideUp 0.3s ease-out; }
         .defect { background: #fee2e2; color: var(--danger); border: 2px solid var(--danger); }
         .ok { background: #dcfce7; color: var(--success); border: 2px solid var(--success); }
         .sn-text { font-family: monospace; font-size: 1.1rem; display: block; margin-top: 5px; word-break: break-all; }
         .big-icon { font-size: 2.2rem; display: block; margin-bottom: 5px; }
 
         .engine-tag {
-            position: absolute;
-            top: 8px;
-            left: 8px;
-            background: rgba(0,0,0,0.6);
-            color: white;
-            padding: 3px 8px;
-            border-radius: 6px;
-            font-size: 0.7rem;
-            z-index: 10;
+            position: absolute; top: 8px; left: 8px;
+            background: rgba(0,0,0,0.6); color: white;
+            padding: 3px 8px; border-radius: 6px;
+            font-size: 0.7rem; z-index: 10;
+        }
+
+        .tip-banner {
+            width: 100%; background: #fef3c7; border: 1px solid #f59e0b;
+            color: #92400e; padding: 8px 12px; border-radius: 8px;
+            font-size: 0.8rem; text-align: center; box-sizing: border-box;
         }
 
         @keyframes slideUp {
@@ -186,21 +130,28 @@
 
     <div class="container">
         <div id="reader">
-            <!-- Mode natif : on affiche une video nous-mêmes -->
             <video id="native-video" playsinline autoplay muted style="display:none;"></video>
             <div id="scan-overlay" style="display:none;"></div>
             <span id="engine-tag" class="engine-tag" style="display:none;"></span>
         </div>
+
         <div class="controls">
+            <div id="camera-selector-container">
+                <select id="camera-selector" onchange="switchCamera(this.value)"></select>
+            </div>
+
             <div class="btn-group">
                 <button id="btn-start" onclick="startCamera()">📷 Démarrer</button>
                 <button id="btn-stop" onclick="stopCamera()" style="display:none; background:#64748b;">Arrêter</button>
                 <button id="btn-flash" onclick="toggleFlash()" style="display:none; background:#f59e0b;">⚡ Flash</button>
-                <button id="btn-focus" onclick="cycleFocus()" style="display:none; background:#0ea5e9;">🎯 Focus</button>
+            </div>
+
+            <div id="tip-banner" class="tip-banner" style="display:none;">
+                💡 Tenez le téléphone à <b>10-15 cm</b> du code. Si flou, essayez une autre caméra dans la liste.
             </div>
             
             <div id="zoom-panel">
-                <label style="font-size: 0.75rem; font-weight: bold; margin-bottom: 5px;">🔍 ZOOM (Aide la mise au point)</label>
+                <label style="font-size: 0.75rem; font-weight: bold; margin-bottom: 5px;">🔍 ZOOM</label>
                 <input type="range" id="zoom-range" min="1" max="5" step="0.1" value="1" oninput="applyZoom(this.value)">
             </div>
         </div>
@@ -220,16 +171,15 @@
         let serialsSet = new Set();
         let lastScannedCode = null;
 
-        // État moteur
-        let engine = null; // 'native' ou 'fallback'
+        let engine = null;
         let nativeStream = null;
         let nativeTrack = null;
         let nativeDetector = null;
         let nativeRafId = null;
         let html5QrCode = null;
         let isFlashOn = false;
-        let focusModeIndex = 0;
-        const focusModes = ['continuous', 'near', 'far']; // near = manuel court, far = manuel long
+        let availableCameras = [];
+        let currentCameraId = null;
 
         function updateUI() {
             const t = i18n[currentLang];
@@ -255,9 +205,70 @@
             .then(data => { serialsSet = new Set(data); })
             .catch(() => console.error("Erreur data.json"));
 
-        // =============================================================
-        //  DÉTECTION DU MOTEUR
-        // =============================================================
+        // Énumération des caméras (nécessite permission préalable pour avoir les labels)
+        async function listCameras() {
+            try {
+                const tmp = await navigator.mediaDevices.getUserMedia({ video: true });
+                tmp.getTracks().forEach(t => t.stop());
+            } catch (e) {
+                return [];
+            }
+
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const cams = devices.filter(d => d.kind === 'videoinput');
+
+            const backCams = cams.filter(c => {
+                const label = (c.label || '').toLowerCase();
+                return !label.includes('front') && !label.includes('user') && !label.includes('face');
+            });
+
+            return backCams.length > 0 ? backCams : cams;
+        }
+
+        function pickBestCameraForMacro(cameras) {
+            for (const cam of cameras) {
+                const label = (cam.label || '').toLowerCase();
+                if (label.includes('ultra') || (label.includes('wide') && !label.includes('tele'))) {
+                    return cam.deviceId;
+                }
+            }
+            const samsungUltra = cameras.find(c => /camera2\s*2/i.test(c.label || ''));
+            if (samsungUltra) return samsungUltra.deviceId;
+            return cameras[0]?.deviceId;
+        }
+
+        function friendlyCameraName(label, index) {
+            const l = (label || '').toLowerCase();
+            if (l.includes('ultra') || /camera2\s*2/i.test(label)) return `🔬 Ultra-grand angle (macro)`;
+            if (l.includes('tele') || /camera2\s*3/i.test(label)) return `🔭 Téléobjectif`;
+            if (/camera2\s*0/i.test(label)) return `📷 Principale`;
+            return `📷 ${label || `Caméra ${index + 1}`}`;
+        }
+
+        async function populateCameraSelector() {
+            availableCameras = await listCameras();
+            if (availableCameras.length === 0) return;
+
+            const select = document.getElementById('camera-selector');
+            select.innerHTML = '';
+            availableCameras.forEach((cam, i) => {
+                const opt = document.createElement('option');
+                opt.value = cam.deviceId;
+                opt.textContent = friendlyCameraName(cam.label, i);
+                select.appendChild(opt);
+            });
+
+            const best = pickBestCameraForMacro(availableCameras);
+            if (best) {
+                select.value = best;
+                currentCameraId = best;
+            }
+
+            if (availableCameras.length > 1) {
+                document.getElementById('camera-selector-container').style.display = 'block';
+            }
+        }
+
         async function detectEngine() {
             if (!('BarcodeDetector' in window)) return 'fallback';
             try {
@@ -269,17 +280,16 @@
             }
         }
 
-        // =============================================================
-        //  DÉMARRAGE
-        // =============================================================
         async function startCamera() {
+            await populateCameraSelector();
             engine = await detectEngine();
-            console.log("Moteur sélectionné :", engine);
+            console.log("Moteur :", engine, "| Caméra :", currentCameraId);
 
             document.getElementById('result-content').innerText = i18n[currentLang].scanPrompt;
             document.getElementById('btn-start').style.display = 'none';
             document.getElementById('btn-stop').style.display = 'inline-block';
             document.getElementById('btn-flash').style.display = 'inline-block';
+            document.getElementById('tip-banner').style.display = 'block';
 
             const tag = document.getElementById('engine-tag');
             tag.style.display = 'block';
@@ -292,19 +302,35 @@
             }
         }
 
-        // =============================================================
-        //  MOTEUR NATIF : BarcodeDetector
-        // =============================================================
+        async function switchCamera(deviceId) {
+            currentCameraId = deviceId;
+            if (engine === 'native') {
+                if (nativeRafId) clearTimeout(nativeRafId);
+                if (nativeStream) nativeStream.getTracks().forEach(t => t.stop());
+                await startNative();
+            } else if (html5QrCode) {
+                try { await html5QrCode.stop(); } catch(e) {}
+                await startFallback();
+            }
+        }
+
+        function buildVideoConstraints() {
+            const constraints = {
+                width: { ideal: 1920 },
+                height: { ideal: 1080 }
+            };
+            if (currentCameraId) {
+                constraints.deviceId = { exact: currentCameraId };
+            } else {
+                constraints.facingMode = { ideal: "environment" };
+            }
+            return constraints;
+        }
+
         async function startNative() {
             try {
-                // On demande la plus haute résolution possible + focus continu
                 nativeStream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        facingMode: { ideal: "environment" },
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 },
-                        advanced: [{ focusMode: "continuous" }]
-                    },
+                    video: buildVideoConstraints(),
                     audio: false
                 });
 
@@ -312,13 +338,17 @@
                 video.srcObject = nativeStream;
                 video.style.display = 'block';
                 document.getElementById('scan-overlay').style.display = 'block';
-
                 await video.play();
 
                 nativeTrack = nativeStream.getVideoTracks()[0];
                 const capabilities = nativeTrack.getCapabilities ? nativeTrack.getCapabilities() : {};
 
-                // Panneau de zoom
+                try {
+                    if (capabilities.focusMode && capabilities.focusMode.includes('continuous')) {
+                        await nativeTrack.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+                    }
+                } catch (e) {}
+
                 if (capabilities.zoom) {
                     document.getElementById('zoom-panel').style.display = 'flex';
                     const slider = document.getElementById('zoom-range');
@@ -328,18 +358,11 @@
                     slider.value = capabilities.zoom.min;
                 }
 
-                // Bouton focus seulement si le mode manuel est possible
-                if (capabilities.focusMode && capabilities.focusMode.length > 1) {
-                    document.getElementById('btn-focus').style.display = 'inline-block';
-                }
-
-                // Lancer le détecteur
                 nativeDetector = new BarcodeDetector({ formats: ['code_128'] });
                 detectLoop(video);
-
             } catch (err) {
-                console.error("Erreur native, fallback :", err);
-                alert("Erreur Caméra. Basculement sur le moteur de secours.");
+                console.error(err);
+                alert("Erreur Caméra : " + err.message);
                 engine = 'fallback';
                 document.getElementById('engine-tag').innerText = '🔁 Fallback';
                 await startFallback();
@@ -348,43 +371,26 @@
 
         async function detectLoop(video) {
             if (engine !== 'native' || !nativeDetector) return;
-
             try {
                 const codes = await nativeDetector.detect(video);
-                if (codes.length > 0) {
-                    onScanSuccess(codes[0].rawValue);
-                }
-            } catch (e) {
-                // Ignorer les erreurs de détection ponctuelles
-            }
-
-            // Boucle à ~10 fps (100ms) pour laisser le CPU respirer
+                if (codes.length > 0) onScanSuccess(codes[0].rawValue);
+            } catch (e) {}
             nativeRafId = setTimeout(() => {
                 requestAnimationFrame(() => detectLoop(video));
             }, 100);
         }
 
-        // =============================================================
-        //  MOTEUR FALLBACK : html5-qrcode
-        // =============================================================
         async function startFallback() {
             html5QrCode = new Html5Qrcode("reader");
-
             const config = { 
                 fps: 10,
                 qrbox: (w, h) => ({ width: w * 0.9, height: h * 0.4 }),
                 formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128 ],
-                videoConstraints: {
-                    facingMode: "environment",
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 },
-                    advanced: [{ focusMode: "continuous" }]
-                }
+                videoConstraints: buildVideoConstraints()
             };
 
             try {
                 await html5QrCode.start(undefined, config, onScanSuccess);
-
                 const track = html5QrCode.getVideoTrack ? html5QrCode.getVideoTrack() : null;
                 if (track) {
                     const capabilities = track.getCapabilities();
@@ -396,19 +402,12 @@
                         slider.step = capabilities.zoom.step || 0.1;
                         slider.value = capabilities.zoom.min;
                     }
-                    if (capabilities.focusMode && capabilities.focusMode.length > 1) {
-                        document.getElementById('btn-focus').style.display = 'inline-block';
-                    }
                 }
             } catch (err) {
-                console.error(err);
-                alert("Erreur Caméra : autorisez l'accès et fermez les autres apps utilisant l'appareil photo.");
+                alert("Erreur Caméra : " + err.message);
             }
         }
 
-        // =============================================================
-        //  ARRÊT
-        // =============================================================
         function stopCamera() {
             if (engine === 'native') {
                 if (nativeRafId) clearTimeout(nativeRafId);
@@ -419,9 +418,6 @@
             location.reload();
         }
 
-        // =============================================================
-        //  ZOOM / FLASH / FOCUS — unifiés pour les deux moteurs
-        // =============================================================
         function getActiveTrack() {
             if (engine === 'native') return nativeTrack;
             if (html5QrCode && html5QrCode.getVideoTrack) return html5QrCode.getVideoTrack();
@@ -433,9 +429,7 @@
             if (!track) return;
             try {
                 await track.applyConstraints({ advanced: [{ zoom: parseFloat(val) }] });
-            } catch (e) {
-                console.warn("Zoom non supporté", e);
-            }
+            } catch (e) {}
         }
 
         async function toggleFlash() {
@@ -450,40 +444,6 @@
             }
         }
 
-        async function cycleFocus() {
-            const track = getActiveTrack();
-            if (!track) return;
-            focusModeIndex = (focusModeIndex + 1) % focusModes.length;
-            const mode = focusModes[focusModeIndex];
-
-            try {
-                const caps = track.getCapabilities();
-                if (mode === 'continuous') {
-                    await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
-                    document.getElementById('btn-focus').innerText = '🎯 Auto';
-                } else if (mode === 'near' && caps.focusDistance) {
-                    // Focus rapproché : utile pour les petits codes-barres
-                    await track.applyConstraints({
-                        advanced: [{ focusMode: 'manual', focusDistance: caps.focusDistance.min }]
-                    });
-                    document.getElementById('btn-focus').innerText = '🎯 Proche';
-                } else if (mode === 'far' && caps.focusDistance) {
-                    await track.applyConstraints({
-                        advanced: [{ focusMode: 'manual', focusDistance: caps.focusDistance.max }]
-                    });
-                    document.getElementById('btn-focus').innerText = '🎯 Loin';
-                } else {
-                    // Si pas de focusDistance, on passe au suivant
-                    cycleFocus();
-                }
-            } catch (e) {
-                console.warn("Focus non supporté", e);
-            }
-        }
-
-        // =============================================================
-        //  CALLBACK DE SCAN
-        // =============================================================
         async function onScanSuccess(decodedText) {
             const cleanText = decodedText.trim().toUpperCase();
             if (cleanText === lastScannedCode) return;

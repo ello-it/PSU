@@ -197,10 +197,7 @@
 
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) 
                       || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-        
-        const TELEGRAM_TOKEN = "8661815668:AAEy6OoUwq8oSxsUQHCLbanuBd4hnG_POdc";
-        const CHAT_ID = "sunrisepsu_bot";
-        
+
         let currentLang = localStorage.getItem('userLang') || 'fr';
         let serialsSet = new Set();
         let lastScannedCode = null;
@@ -223,18 +220,6 @@
             document.getElementById('lang-select').value = currentLang;
             document.getElementById('btn-start').innerText = t.btnStart;
             document.getElementById('btn-stop').innerText = t.btnStop;
-        }
-
-        function sendTelegramStat(status, serial) {
-            if (!CHAT_ID || CHAT_ID === "TON_CHAT_ID_ICI") return;
-            const emoji = status === 'DEFECT' ? "🛑" : "✅";
-            const message = `${emoji} *Nouveau Scan*\nStatus: ${status}\nSN: \`${serial}\`\nLangue: ${currentLang}`;
-            
-            fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chat_id: CHAT_ID, text: message, parse_mode: "Markdown" })
-            }).catch(e => console.error("Erreur Telegram", e));
         }
 
         function setLang(lang) {
@@ -633,7 +618,6 @@
             const t = i18n[currentLang];
 
             content.className = '';
-            sendTelegramStat(isDefect ? 'DEFECT' : 'OK', cleanText);
 
             if (serialsSet.has(hashedInput)) {
                 content.innerHTML = `<div class="status-card defect"><span class="big-icon">🛑</span><span class="status-label">${t.statusDefect}</span><span class="sn-text">${cleanText}</span></div>`;

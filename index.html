@@ -6,7 +6,8 @@
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
     <title>Sunrise PSU Scan Pro</title>
-    <script src="https://unpkg.com/html5-qrcode"></script>
+    <!-- ZXing-js : excellent pour Code 128 sur iOS -->
+    <script src="https://unpkg.com/@zxing/browser@latest"></script>
     <style>
         :root {
             --primary: #2563eb;
@@ -80,7 +81,7 @@
             background: #000; min-height: 300px; position: relative;
         }
 
-        #native-video { width: 100%; display: block; background: #000; border-radius: 12px; }
+        #video-element { width: 100%; display: block; background: #000; border-radius: 12px; }
 
         #scan-overlay {
             position: absolute; top: 30%; left: 5%;
@@ -156,7 +157,7 @@
         </div>
 
         <div id="reader">
-            <video id="native-video" playsinline autoplay muted style="display:none;"></video>
+            <video id="video-element" playsinline autoplay muted style="display:none;"></video>
             <div id="scan-overlay" style="display:none;"></div>
             <span id="engine-tag" class="engine-tag" style="display:none;"></span>
         </div>
@@ -194,7 +195,6 @@
             de: { title: "PSU ConnectBox", scanPrompt: "Bereit zum Scannen", statusOk: "PSU OK", statusDefect: "PSU Defekt", btnStart: "📷 Starten", btnStop: "Stopp" }
         };
 
-        // Détection plateforme
         const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) 
                       || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
@@ -202,12 +202,13 @@
         let serialsSet = new Set();
         let lastScannedCode = null;
 
-        let engine = null;
-        let nativeStream = null;
-        let nativeTrack = null;
+        let engine = null;  // 'native' ou 'zxing'
+        let mediaStream = null;
+        let videoTrack = null;
         let nativeDetector = null;
         let nativeRafId = null;
-        let html5QrCode = null;
+        let zxingReader = null;
+        let zxingControls = null;
         let isFlashOn = false;
         let availableCameras = [];
         let currentCameraId = null;
@@ -238,7 +239,7 @@
             .catch(() => console.error("Erreur data.json"));
 
         // =============================================================
-        //  SON + VIBRATION
+        //  FEEDBACK
         // =============================================================
         function initAudio() {
             if (!audioCtx) {
@@ -294,14 +295,11 @@
         // =============================================================
         async function listCameras() {
             try {
-                // Sur iOS, cette requête initiale est cruciale :
-                // sans ça, enumerateDevices() renvoie des labels vides
                 const tmp = await navigator.mediaDevices.getUserMedia({ 
                     video: { facingMode: 'environment' } 
                 });
                 tmp.getTracks().forEach(t => t.stop());
             } catch (e) {
-                console.warn("Permission initiale refusée", e);
                 throw e;
             }
 
@@ -310,8 +308,6 @@
 
             const backCams = cams.filter(c => {
                 const label = (c.label || '').toLowerCase();
-                // iOS labels : "Back Camera", "Back Dual Camera", "Back Triple Camera", "Back Ultra Wide Camera"
-                // Android labels : "camera2 0, facing back", etc.
                 return !label.includes('front') && !label.includes('user') && !label.includes('face');
             });
 
@@ -321,18 +317,12 @@
         function pickBestCameraForMacro(cameras) {
             for (const cam of cameras) {
                 const label = (cam.label || '').toLowerCase();
-                // iOS : "Back Ultra Wide Camera" est la meilleure pour macro
-                if (label.includes('ultra wide') || label.includes('ultra-wide')) {
-                    return cam.deviceId;
-                }
+                if (label.includes('ultra wide') || label.includes('ultra-wide')) return cam.deviceId;
             }
             for (const cam of cameras) {
                 const label = (cam.label || '').toLowerCase();
-                if (label.includes('ultra') || (label.includes('wide') && !label.includes('tele'))) {
-                    return cam.deviceId;
-                }
+                if (label.includes('ultra') || (label.includes('wide') && !label.includes('tele'))) return cam.deviceId;
             }
-            // Pattern Samsung Android
             const samsungUltra = cameras.find(c => /camera2\s*2/i.test(c.label || ''));
             if (samsungUltra) return samsungUltra.deviceId;
             return cameras[0]?.deviceId;
@@ -379,79 +369,31 @@
         }
 
         async function detectEngine() {
-            if (!('BarcodeDetector' in window)) return 'fallback';
-            try {
-                const supported = await BarcodeDetector.getSupportedFormats();
-                if (supported.includes('code_128')) return 'native';
-                return 'fallback';
-            } catch (e) {
-                return 'fallback';
+            // BarcodeDetector natif (Android Chrome) — priorité absolue
+            if ('BarcodeDetector' in window) {
+                try {
+                    const supported = await BarcodeDetector.getSupportedFormats();
+                    if (supported.includes('code_128')) return 'native';
+                } catch (e) {}
             }
-        }
-
-        async function startCamera() {
-            initAudio();
-
-            const ok = await populateCameraSelector();
-            if (!ok) {
-                alert("Impossible d'accéder à la caméra. Vérifiez les autorisations du navigateur (Réglages → Safari/Chrome → Appareil photo).");
-                return;
-            }
-
-            engine = await detectEngine();
-
-            document.getElementById('result-content').className = 'waiting';
-            document.getElementById('result-content').innerText = i18n[currentLang].scanPrompt;
-            document.getElementById('btn-start').style.display = 'none';
-            document.getElementById('btn-stop').style.display = 'inline-block';
-            // Flash pas supporté sur iOS Safari
-            if (!isIOS) {
-                document.getElementById('btn-flash').style.display = 'inline-block';
-            }
-            document.getElementById('tip-banner').style.display = 'block';
-
-            const tag = document.getElementById('engine-tag');
-            tag.style.display = 'block';
-            tag.innerText = engine === 'native' ? '⚡ Native' : (isIOS ? '🍎 iOS' : '🔁 Fallback');
-
-            if (engine === 'native') {
-                await startNative();
-            } else {
-                await startFallback();
-            }
-        }
-
-        async function switchCamera(deviceId) {
-            currentCameraId = deviceId;
-            if (engine === 'native') {
-                if (nativeRafId) clearTimeout(nativeRafId);
-                if (nativeStream) nativeStream.getTracks().forEach(t => t.stop());
-                await startNative();
-            } else if (html5QrCode) {
-                try { await html5QrCode.stop(); } catch(e) {}
-                await startFallback();
-            }
+            // Sinon : ZXing (fonctionne partout, excellent sur iOS)
+            return 'zxing';
         }
 
         // =============================================================
-        //  CONSTRUCTION DES CONTRAINTES VIDÉO
-        //  iOS : facingMode + deviceId sans "exact"
-        //  Android : deviceId avec "exact"
+        //  DÉMARRAGE DE LA CAMÉRA (commun aux deux moteurs)
         // =============================================================
         function buildVideoConstraints() {
             if (isIOS) {
-                // iOS : approche souple. Pas de deviceId avec exact, pas de resolution forcée.
-                // Safari choisit automatiquement et supporte mal les contraintes strictes.
                 if (currentCameraId) {
                     return {
-                        deviceId: currentCameraId,  // sans "exact" sur iOS
+                        deviceId: currentCameraId,
                         facingMode: 'environment'
                     };
                 }
                 return { facingMode: 'environment' };
             }
 
-            // Android : on peut demander une haute résolution et un deviceId strict
             const constraints = {
                 width: { ideal: 1920 },
                 height: { ideal: 1080 }
@@ -464,138 +406,190 @@
             return constraints;
         }
 
+        async function startCamera() {
+            initAudio();
+
+            const ok = await populateCameraSelector();
+            if (!ok) {
+                alert("Impossible d'accéder à la caméra. Vérifiez les autorisations.");
+                return;
+            }
+
+            engine = await detectEngine();
+
+            document.getElementById('result-content').className = 'waiting';
+            document.getElementById('result-content').innerText = i18n[currentLang].scanPrompt;
+            document.getElementById('btn-start').style.display = 'none';
+            document.getElementById('btn-stop').style.display = 'inline-block';
+            if (!isIOS) {
+                document.getElementById('btn-flash').style.display = 'inline-block';
+            }
+            document.getElementById('tip-banner').style.display = 'block';
+
+            const tag = document.getElementById('engine-tag');
+            tag.style.display = 'block';
+            tag.innerText = engine === 'native' ? '⚡ Native' : '🔶 ZXing';
+
+            if (engine === 'native') {
+                await startNative();
+            } else {
+                await startZXing();
+            }
+        }
+
+        async function switchCamera(deviceId) {
+            currentCameraId = deviceId;
+            await stopEngine();
+            if (engine === 'native') {
+                await startNative();
+            } else {
+                await startZXing();
+            }
+        }
+
+        async function stopEngine() {
+            if (engine === 'native') {
+                if (nativeRafId) clearTimeout(nativeRafId);
+            } else if (engine === 'zxing' && zxingControls) {
+                try { zxingControls.stop(); } catch (e) {}
+                zxingControls = null;
+            }
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(t => t.stop());
+                mediaStream = null;
+            }
+        }
+
+        // =============================================================
+        //  MOTEUR 1 : BarcodeDetector natif (Android)
+        // =============================================================
         async function startNative() {
             try {
-                nativeStream = await navigator.mediaDevices.getUserMedia({
+                mediaStream = await navigator.mediaDevices.getUserMedia({
                     video: buildVideoConstraints(),
                     audio: false
                 });
 
-                const video = document.getElementById('native-video');
-                video.srcObject = nativeStream;
+                const video = document.getElementById('video-element');
+                video.srcObject = mediaStream;
                 video.style.display = 'block';
                 document.getElementById('scan-overlay').style.display = 'block';
                 await video.play();
 
-                nativeTrack = nativeStream.getVideoTracks()[0];
-                const capabilities = nativeTrack.getCapabilities ? nativeTrack.getCapabilities() : {};
-
-                try {
-                    if (capabilities.focusMode && capabilities.focusMode.includes('continuous')) {
-                        await nativeTrack.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
-                    }
-                } catch (e) {}
-
-                if (capabilities.zoom) {
-                    document.getElementById('zoom-panel').style.display = 'flex';
-                    const slider = document.getElementById('zoom-range');
-                    slider.min = capabilities.zoom.min;
-                    slider.max = capabilities.zoom.max;
-                    slider.step = capabilities.zoom.step || 0.1;
-                    slider.value = capabilities.zoom.min;
-                }
+                videoTrack = mediaStream.getVideoTracks()[0];
+                setupZoom(videoTrack);
+                tryContinuousFocus(videoTrack);
 
                 nativeDetector = new BarcodeDetector({ formats: ['code_128'] });
-                detectLoop(video);
+                detectNativeLoop(video);
             } catch (err) {
                 console.error(err);
-                alert("Erreur Caméra (native) : " + err.message + "\nBasculement sur le mode secours.");
-                engine = 'fallback';
-                document.getElementById('engine-tag').innerText = '🔁 Fallback';
-                await startFallback();
+                alert("Erreur caméra (native) : " + err.message + "\nBasculement sur ZXing.");
+                engine = 'zxing';
+                document.getElementById('engine-tag').innerText = '🔶 ZXing';
+                await startZXing();
             }
         }
 
-        async function detectLoop(video) {
+        async function detectNativeLoop(video) {
             if (engine !== 'native' || !nativeDetector) return;
             try {
                 const codes = await nativeDetector.detect(video);
                 if (codes.length > 0) onScanSuccess(codes[0].rawValue);
             } catch (e) {}
             nativeRafId = setTimeout(() => {
-                requestAnimationFrame(() => detectLoop(video));
+                requestAnimationFrame(() => detectNativeLoop(video));
             }, 100);
         }
 
-        async function startFallback() {
-            html5QrCode = new Html5Qrcode("reader");
-
-            // Sur iOS on utilise des contraintes minimales pour éviter les erreurs OverconstrainedError
-            const config = { 
-                fps: isIOS ? 15 : 10,
-                qrbox: (w, h) => ({ width: w * 0.9, height: h * 0.4 }),
-                formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128 ],
-                videoConstraints: buildVideoConstraints(),
-                // disableFlip utile sur iOS pour le miroir
-                disableFlip: false
-            };
-
-            // Sur iOS, html5-qrcode accepte mieux un string deviceId qu'un objet complexe
-            let cameraIdOrConfig = undefined;
-            if (isIOS && currentCameraId) {
-                cameraIdOrConfig = currentCameraId;
-            }
-
+        // =============================================================
+        //  MOTEUR 2 : ZXing-js (iOS et fallback)
+        // =============================================================
+        async function startZXing() {
             try {
-                if (isIOS && currentCameraId) {
-                    // Pour iOS, passer directement le deviceId
-                    await html5QrCode.start(currentCameraId, config, onScanSuccess);
-                } else {
-                    await html5QrCode.start(undefined, config, onScanSuccess);
-                }
+                const video = document.getElementById('video-element');
+                video.style.display = 'block';
+                document.getElementById('scan-overlay').style.display = 'block';
 
-                const track = html5QrCode.getVideoTrack ? html5QrCode.getVideoTrack() : null;
-                if (track) {
-                    const capabilities = track.getCapabilities ? track.getCapabilities() : {};
-                    if (capabilities.zoom) {
-                        document.getElementById('zoom-panel').style.display = 'flex';
-                        const slider = document.getElementById('zoom-range');
-                        slider.min = capabilities.zoom.min;
-                        slider.max = capabilities.zoom.max;
-                        slider.step = capabilities.zoom.step || 0.1;
-                        slider.value = capabilities.zoom.min;
+                // On récupère le stream nous-mêmes pour garder le contrôle du track (zoom, flash)
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    video: buildVideoConstraints(),
+                    audio: false
+                });
+                video.srcObject = mediaStream;
+                await video.play();
+
+                videoTrack = mediaStream.getVideoTracks()[0];
+                setupZoom(videoTrack);
+                tryContinuousFocus(videoTrack);
+
+                // Configuration ZXing : on limite aux formats Code 128 pour aller plus vite
+                const hints = new Map();
+                // Les constantes ZXing sont accessibles via la lib chargée
+                if (window.ZXingBrowser) {
+                    const DecodeHintType = window.ZXingBrowser.DecodeHintType;
+                    const BarcodeFormat = window.ZXingBrowser.BarcodeFormat;
+                    if (DecodeHintType && BarcodeFormat) {
+                        hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.CODE_128]);
+                        hints.set(DecodeHintType.TRY_HARDER, true);
                     }
                 }
+
+                // Instancier le lecteur
+                const BrowserMultiFormatReader = window.ZXingBrowser.BrowserMultiFormatReader;
+                zxingReader = new BrowserMultiFormatReader(hints, {
+                    delayBetweenScanAttempts: 100,
+                    delayBetweenScanSuccess: 2000
+                });
+
+                // decodeFromVideoElement lit depuis le <video> qu'on alimente déjà
+                zxingControls = await zxingReader.decodeFromVideoElement(video, (result, err) => {
+                    if (result) {
+                        onScanSuccess(result.getText());
+                    }
+                    // err est renvoyée à chaque tentative non concluante — on ignore
+                });
+
             } catch (err) {
-                console.error("Erreur fallback :", err);
-                // Dernier fallback : on tente avec facingMode uniquement
-                try {
-                    await html5QrCode.start(
-                        { facingMode: "environment" },
-                        { 
-                            fps: 10,
-                            qrbox: (w, h) => ({ width: w * 0.9, height: h * 0.4 }),
-                            formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128 ]
-                        },
-                        onScanSuccess
-                    );
-                } catch (err2) {
-                    alert("Erreur Caméra : " + err2.message + "\n\nVérifiez que la caméra est autorisée dans les réglages du navigateur.");
-                }
+                console.error(err);
+                alert("Erreur caméra (ZXing) : " + err.message);
             }
+        }
+
+        // =============================================================
+        //  HELPERS : zoom, focus, flash
+        // =============================================================
+        function setupZoom(track) {
+            if (!track.getCapabilities) return;
+            const capabilities = track.getCapabilities();
+            if (capabilities.zoom) {
+                document.getElementById('zoom-panel').style.display = 'flex';
+                const slider = document.getElementById('zoom-range');
+                slider.min = capabilities.zoom.min;
+                slider.max = capabilities.zoom.max;
+                slider.step = capabilities.zoom.step || 0.1;
+                slider.value = capabilities.zoom.min;
+            }
+        }
+
+        async function tryContinuousFocus(track) {
+            if (!track.getCapabilities) return;
+            try {
+                const capabilities = track.getCapabilities();
+                if (capabilities.focusMode && capabilities.focusMode.includes('continuous')) {
+                    await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+                }
+            } catch (e) {}
         }
 
         function stopCamera() {
-            if (engine === 'native') {
-                if (nativeRafId) clearTimeout(nativeRafId);
-                if (nativeStream) nativeStream.getTracks().forEach(t => t.stop());
-            } else if (html5QrCode) {
-                html5QrCode.stop().catch(() => {});
-            }
-            location.reload();
-        }
-
-        function getActiveTrack() {
-            if (engine === 'native') return nativeTrack;
-            if (html5QrCode && html5QrCode.getVideoTrack) return html5QrCode.getVideoTrack();
-            return null;
+            stopEngine().finally(() => location.reload());
         }
 
         async function applyZoom(val) {
-            const track = getActiveTrack();
-            if (!track) return;
+            if (!videoTrack) return;
             try {
-                await track.applyConstraints({ advanced: [{ zoom: parseFloat(val) }] });
+                await videoTrack.applyConstraints({ advanced: [{ zoom: parseFloat(val) }] });
             } catch (e) {}
         }
 
@@ -604,13 +598,12 @@
                 alert("Le flash n'est pas supporté sur iOS Safari.");
                 return;
             }
-            const track = getActiveTrack();
-            if (!track) return;
+            if (!videoTrack) return;
             isFlashOn = !isFlashOn;
             try {
-                await track.applyConstraints({ advanced: [{ torch: isFlashOn }] });
+                await videoTrack.applyConstraints({ advanced: [{ torch: isFlashOn }] });
             } catch (e) {
-                alert("Le flash n'est pas supporté par cet objectif.");
+                alert("Flash non supporté par cette caméra.");
                 isFlashOn = false;
             }
         }

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
-    <title>Sunrise PSU Scan</title>
+    <title>Sunrise PSU Scan Pro</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root {
@@ -72,9 +72,16 @@
         
         .controls {
             display: flex;
-            justify-content: center;
+            flex-direction: column;
+            align-items: center;
             gap: 10px;
             margin: 15px 0;
+        }
+
+        .btn-group {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
         }
 
         button {
@@ -88,6 +95,19 @@
             font-size: 0.9rem;
             transition: opacity 0.2s;
         }
+
+        #zoom-panel {
+            width: 100%;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            background: #f1f5f9;
+            padding: 10px;
+            border-radius: 10px;
+            box-sizing: border-box;
+        }
+
+        input[type=range] { width: 100%; height: 30px; }
 
         #result-container {
             margin-top: 15px;
@@ -109,7 +129,6 @@
 
         .defect { background: #fee2e2; color: var(--danger); border: 2px solid var(--danger); }
         .ok { background: #dcfce7; color: var(--success); border: 2px solid var(--success); }
-
         .sn-text { font-family: monospace; font-size: 1.1rem; display: block; margin-top: 5px; word-break: break-all; }
         .big-icon { font-size: 2.2rem; display: block; margin-bottom: 5px; }
 
@@ -135,9 +154,16 @@
     <div class="container">
         <div id="reader"></div>
         <div class="controls">
-            <button id="btn-start" onclick="startCamera()">📷 Démarrer</button>
-            <button id="btn-stop" onclick="stopCamera()" style="display:none; background:#64748b;">Arrêter</button>
-            <button id="btn-flash" onclick="toggleFlash()" style="display:none; background:#f59e0b;">⚡ Flash</button>
+            <div class="btn-group">
+                <button id="btn-start" onclick="startCamera()">📷 Démarrer</button>
+                <button id="btn-stop" onclick="stopCamera()" style="display:none; background:#64748b;">Arrêter</button>
+                <button id="btn-flash" onclick="toggleFlash()" style="display:none; background:#f59e0b;">⚡ Flash</button>
+            </div>
+            
+            <div id="zoom-panel">
+                <label style="font-size: 0.75rem; font-weight: bold; margin-bottom: 5px;">🔍 ZOOM (Aide la mise au point)</label>
+                <input type="range" id="zoom-range" min="1" max="5" step="0.1" value="1" oninput="applyZoom(this.value)">
+            </div>
         </div>
         <div id="result-container">
             <div id="result-content" style="width:100%; text-align:center; color:#94a3b8;">---</div>
@@ -181,7 +207,7 @@
             .then(data => { serialsSet = new Set(data); })
             .catch(() => console.error("Erreur data.json"));
 
-        function startCamera() {
+        async function startCamera() {
             html5QrCode = new Html5Qrcode("reader");
             
             const config = { 
@@ -190,30 +216,48 @@
                 formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128 ]
             };
 
-            // On demande explicitement la caméra arrière avec une résolution suffisante
-            const videoConstraints = {
-                facingMode: { exact: "environment" }
-            };
+            try {
+                // On demande la caméra environnementale avec autofocus continu
+                await html5QrCode.start(
+                    { facingMode: "environment" }, 
+                    config, 
+                    onScanSuccess
+                );
 
-            html5QrCode.start(
-                videoConstraints, 
-                config, 
-                onScanSuccess
-            ).then(() => {
                 document.getElementById('btn-start').style.display = 'none';
                 document.getElementById('btn-stop').style.display = 'inline-block';
                 document.getElementById('btn-flash').style.display = 'inline-block';
                 document.getElementById('result-content').innerText = i18n[currentLang].scanPrompt;
-            }).catch(err => {
-                // Fallback si "exact" environment échoue (certains navigateurs)
-                html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
-                .then(() => {
-                    document.getElementById('btn-start').style.display = 'none';
-                    document.getElementById('btn-stop').style.display = 'inline-block';
-                    document.getElementById('btn-flash').style.display = 'inline-block';
-                })
-                .catch(e => alert("Erreur caméra : " + e));
-            });
+
+                // Gestion du Zoom et Focus matériel
+                const track = html5QrCode.getVideoTrack();
+                const capabilities = track.getCapabilities();
+                
+                if (capabilities.zoom) {
+                    document.getElementById('zoom-panel').style.display = 'flex';
+                    const slider = document.getElementById('zoom-range');
+                    slider.min = capabilities.zoom.min;
+                    slider.max = capabilities.zoom.max;
+                    slider.step = capabilities.zoom.step;
+                    slider.value = capabilities.zoom.min;
+                }
+
+                // Forcer l'autofocus si possible
+                if (capabilities.focusMode && capabilities.focusMode.includes('continuous')) {
+                    await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] });
+                }
+
+            } catch (err) {
+                alert("Erreur Caméra : Assurez-vous d'autoriser l'accès et de fermer les autres apps utilisant l'appareil photo.");
+            }
+        }
+
+        function applyZoom(val) {
+            if (html5QrCode) {
+                html5QrCode.applyVideoConstraints({
+                    advanced: [{ zoom: val }]
+                }).catch(e => console.warn("Zoom non supporté"));
+            }
         }
 
         function stopCamera() {
@@ -226,7 +270,7 @@
             isFlashOn = !isFlashOn;
             html5QrCode.applyVideoConstraints({
                 advanced: [{ torch: isFlashOn }]
-            }).catch(() => alert("Flash non supporté sur cet objectif."));
+            }).catch(() => alert("Le flash n'est pas supporté par cet objectif."));
         }
 
         async function onScanSuccess(decodedText) {

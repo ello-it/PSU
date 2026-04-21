@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
-    <title>Sunrise PSU Scan Pro</title>
-    <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
+    <title>Sunrise PSU Scan</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root {
             --primary: #2563eb;
@@ -62,40 +62,14 @@
             box-sizing: border-box;
         }
 
-        /* Conteneur vidéo Quagga */
-        #interactive.viewport {
-            width: 100%;
-            height: 300px;
-            border-radius: 12px;
-            overflow: hidden;
+        #reader { 
+            width: 100%; 
+            border-radius: 12px; 
+            overflow: hidden; 
             background: #000;
-            position: relative;
+            min-height: 300px;
         }
-
-        #interactive.viewport video, #interactive.viewport canvas {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            position: absolute;
-            top: 0;
-            left: 0;
-        }
-
-        /* Overlay de visée */
-        .scan-guide {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 85%;
-            height: 120px;
-            border: 2px solid var(--primary);
-            border-radius: 8px;
-            box-shadow: 0 0 0 4000px rgba(0,0,0,0.4);
-            z-index: 10;
-            pointer-events: none;
-        }
-
+        
         .controls {
             display: flex;
             justify-content: center;
@@ -112,6 +86,7 @@
             font-weight: 600;
             cursor: pointer;
             font-size: 0.9rem;
+            transition: opacity 0.2s;
         }
 
         #result-container {
@@ -134,7 +109,9 @@
 
         .defect { background: #fee2e2; color: var(--danger); border: 2px solid var(--danger); }
         .ok { background: #dcfce7; color: var(--success); border: 2px solid var(--success); }
+
         .sn-text { font-family: monospace; font-size: 1.1rem; display: block; margin-top: 5px; word-break: break-all; }
+        .big-icon { font-size: 2.2rem; display: block; margin-bottom: 5px; }
 
         @keyframes slideUp {
             from { transform: translateY(10px); opacity: 0; }
@@ -156,16 +133,12 @@
     </div>
 
     <div class="container">
-        <div id="interactive" class="viewport">
-            <div class="scan-guide"></div>
-        </div>
-        
+        <div id="reader"></div>
         <div class="controls">
-            <button id="btn-start" onclick="startScanning()">📷 Démarrer</button>
-            <button id="btn-stop" onclick="location.reload()" style="display:none; background:#64748b;">Arrêter</button>
+            <button id="btn-start" onclick="startCamera()">📷 Démarrer</button>
+            <button id="btn-stop" onclick="stopCamera()" style="display:none; background:#64748b;">Arrêter</button>
             <button id="btn-flash" onclick="toggleFlash()" style="display:none; background:#f59e0b;">⚡ Flash</button>
         </div>
-
         <div id="result-container">
             <div id="result-content" style="width:100%; text-align:center; color:#94a3b8;">---</div>
         </div>
@@ -173,23 +146,29 @@
 
     <script>
         const i18n = {
-            fr: { title: "PSU ConnectBox", scanPrompt: "Prêt au scan", statusOk: "PSU OK", statusDefect: "PSU défectueux" },
-            en: { title: "PSU ConnectBox", scanPrompt: "Ready to scan", statusOk: "PSU OK", statusDefect: "Defective PSU" },
-            de: { title: "PSU ConnectBox", scanPrompt: "Bereit zum Scannen", statusOk: "PSU OK", statusDefect: "PSU Defekt" }
+            fr: { title: "PSU ConnectBox", scanPrompt: "Prêt au scan", statusOk: "PSU OK", statusDefect: "PSU défectueux", btnStart: "📷 Démarrer", btnStop: "Arrêter" },
+            en: { title: "PSU ConnectBox", scanPrompt: "Ready to scan", statusOk: "PSU OK", statusDefect: "Defective PSU", btnStart: "📷 Start", btnStop: "Stop" },
+            de: { title: "PSU ConnectBox", scanPrompt: "Bereit zum Scannen", statusOk: "PSU OK", statusDefect: "PSU Defekt", btnStart: "📷 Starten", btnStop: "Stopp" }
         };
 
         let currentLang = localStorage.getItem('userLang') || 'fr';
         let serialsSet = new Set();
-        let lastScannedCode = null;
+        let html5QrCode;
         let isFlashOn = false;
+        let lastScannedCode = null;
+
+        function updateUI() {
+            const t = i18n[currentLang];
+            document.getElementById('txt-title').innerText = t.title;
+            document.getElementById('lang-select').value = currentLang;
+            document.getElementById('btn-start').innerText = t.btnStart;
+            document.getElementById('btn-stop').innerText = t.btnStop;
+        }
 
         function setLang(lang) {
             localStorage.setItem('userLang', lang);
             location.reload();
         }
-
-        // Charger les données
-        fetch('data.json').then(r => r.json()).then(d => { serialsSet = new Set(d); });
 
         async function hashSN(string) {
             const utf8 = new TextEncoder().encode(string);
@@ -197,67 +176,81 @@
             return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
         }
 
-        function startScanning() {
-            Quagga.init({
-                inputStream: {
-                    name: "Live",
-                    type: "LiveStream",
-                    target: document.querySelector('#interactive'),
-                    constraints: {
-                        facingMode: "environment",
-                        aspectRatio: { min: 1, max: 2 },
-                        focusMode: "continuous"
-                    },
-                },
-                locator: { patchSize: "medium", halfSample: true },
-                numOfWorkers: 4,
-                decoder: { readers: ["code_128_reader"] },
-                locate: true
-            }, function(err) {
-                if (err) { alert("Erreur : " + err); return; }
-                Quagga.start();
+        fetch('data.json')
+            .then(res => res.json())
+            .then(data => { serialsSet = new Set(data); })
+            .catch(() => console.error("Erreur data.json"));
+
+        function startCamera() {
+            html5QrCode = new Html5Qrcode("reader");
+            
+            const config = { 
+                fps: 25, 
+                qrbox: (w, h) => { return { width: w * 0.9, height: h * 0.4 }; },
+                formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128 ]
+            };
+
+            // On demande explicitement la caméra arrière avec une résolution suffisante
+            const videoConstraints = {
+                facingMode: { exact: "environment" }
+            };
+
+            html5QrCode.start(
+                videoConstraints, 
+                config, 
+                onScanSuccess
+            ).then(() => {
                 document.getElementById('btn-start').style.display = 'none';
                 document.getElementById('btn-stop').style.display = 'inline-block';
                 document.getElementById('btn-flash').style.display = 'inline-block';
                 document.getElementById('result-content').innerText = i18n[currentLang].scanPrompt;
+            }).catch(err => {
+                // Fallback si "exact" environment échoue (certains navigateurs)
+                html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+                .then(() => {
+                    document.getElementById('btn-start').style.display = 'none';
+                    document.getElementById('btn-stop').style.display = 'inline-block';
+                    document.getElementById('btn-flash').style.display = 'inline-block';
+                })
+                .catch(e => alert("Erreur caméra : " + e));
             });
-
-            Quagga.onDetected(onDetected);
         }
 
-        async function onDetected(result) {
-            const code = result.codeResult.code;
-            if (!code || code === lastScannedCode) return;
-            
-            lastScannedCode = code;
-            const hashedInput = await hashSN(code.trim().toUpperCase());
+        function stopCamera() {
+            if (html5QrCode) {
+                html5QrCode.stop().then(() => location.reload());
+            }
+        }
+
+        function toggleFlash() {
+            isFlashOn = !isFlashOn;
+            html5QrCode.applyVideoConstraints({
+                advanced: [{ torch: isFlashOn }]
+            }).catch(() => alert("Flash non supporté sur cet objectif."));
+        }
+
+        async function onScanSuccess(decodedText) {
+            const cleanText = decodedText.trim().toUpperCase();
+            if (cleanText === lastScannedCode) return;
+            lastScannedCode = cleanText;
+
             const content = document.getElementById('result-content');
+            const hashedInput = await hashSN(cleanText);
             const t = i18n[currentLang];
 
             document.getElementById('result-container').style.border = "none";
 
             if (serialsSet.has(hashedInput)) {
-                content.innerHTML = `<div class="status-card defect">🛑<br><strong>${t.statusDefect}</strong><br><span class="sn-text">${code}</span></div>`;
+                content.innerHTML = `<div class="status-card defect"><span class="big-icon">🛑</span><strong>${t.statusDefect}</strong><span class="sn-text">${cleanText}</span></div>`;
                 if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
             } else {
-                content.innerHTML = `<div class="status-card ok">✅<br><strong>${t.statusOk}</strong><br><span class="sn-text">${code}</span></div>`;
+                content.innerHTML = `<div class="status-card ok"><span class="big-icon">✅</span><strong>${t.statusOk}</strong><span class="sn-text">${cleanText}</span></div>`;
                 if (navigator.vibrate) navigator.vibrate(50);
             }
-
             setTimeout(() => { lastScannedCode = null; }, 3000);
         }
 
-        function toggleFlash() {
-            const track = Quagga.CameraAccess.getActiveTrack();
-            if (track && typeof track.getCapabilities === 'function') {
-                isFlashOn = !isFlashOn;
-                track.applyConstraints({ advanced: [{ torch: isFlashOn }] })
-                     .catch(() => alert("Flash non supporté"));
-            }
-        }
-
-        document.getElementById('txt-title').innerText = i18n[currentLang].title;
-        document.getElementById('lang-select').value = currentLang;
+        updateUI();
     </script>
 </body>
 </html>

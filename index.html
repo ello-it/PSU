@@ -149,7 +149,7 @@
                 statusOk: "PSU OK", 
                 statusDefect: "PSU défectueux, à remplacer", 
                 errorDb: "⚠️ data.json introuvable",
-                sc: { perm: "Démarrer la caméra", stop: "Arrêter", flash: "Flash ON/OFF" }
+                sc: { perm: "Caméra", stop: "Arrêter", flash: "Flash" }
             },
             en: { 
                 title: "PSU ConnectBox", 
@@ -158,7 +158,7 @@
                 statusOk: "PSU OK", 
                 statusDefect: "Defective PSU, to replace", 
                 errorDb: "⚠️ data.json not found",
-                sc: { perm: "Start Camera", stop: "Stop", flash: "Flash ON/OFF" }
+                sc: { perm: "Camera", stop: "Stop", flash: "Flash" }
             },
             de: { 
                 title: "PSU ConnectBox", 
@@ -167,7 +167,7 @@
                 statusOk: "PSU OK", 
                 statusDefect: "Defektes PSU, zu ersetzen", 
                 errorDb: "⚠️ data.json nicht gefunden",
-                sc: { perm: "Kamera starten", stop: "Stopp", flash: "Blitz AN/AUS" }
+                sc: { perm: "Kamera", stop: "Stopp", flash: "Flash" }
             }
         };
 
@@ -230,15 +230,21 @@
             setTimeout(() => { lastScannedCode = null; }, 3000);
         }
 
-        // Config Scanner
+        // Config Scanner Haute Performance
         const scT = i18n[currentLang].sc;
         const scanner = new Html5QrcodeScanner("reader", { 
-            fps: 20, // Plus d'images par seconde pour capturer le focus
+            fps: 20, 
             qrbox: function(viewfinderWidth, viewfinderHeight) {
-                // Zone dynamique : 80% de la largeur pour les petits codes
-                return { width: viewfinderWidth * 0.8, height: viewfinderHeight * 0.4 };
+                // Rectangle large et court pour les codes-barres horizontaux
+                return { width: viewfinderWidth * 0.9, height: viewfinderHeight * 0.4 };
             },
             aspectRatio: 1.0,
+            videoConstraints: {
+                facingMode: "environment",
+                width: { min: 640, ideal: 1280, max: 1920 },
+                height: { min: 480, ideal: 720, max: 1080 }
+            },
+            formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128 ], // Format spécifique PSU
             rememberLastUsedCamera: true,
             supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
             showTorchButtonIfSupported: true,

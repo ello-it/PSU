@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="manifest" href="manifest.json">
     <link rel="apple-touch-icon" href="apple-touch-icon.png">
-    <title>Scanner PSU</title>
+    <title>Scanner PSU Pro</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root {
@@ -28,13 +28,13 @@
         .header {
             background: white;
             width: 100%;
-            padding: 1.2rem 0;
+            padding: 1rem 0;
             text-align: center;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
             position: relative;
         }
 
-        h2 { margin: 0; font-size: 1.1rem; color: var(--primary); padding: 0 95px 0 20px; }
+        h2 { margin: 0; font-size: 1.1rem; color: var(--primary); padding-right: 85px; padding-left: 15px; }
 
         .lang-container {
             position: absolute;
@@ -44,13 +44,11 @@
         }
 
         #lang-select {
-            padding: 6px 8px;
+            padding: 6px;
             border-radius: 8px;
             border: 1px solid #cbd5e1;
-            background: white;
             font-size: 0.8rem;
             font-weight: 600;
-            color: #475569;
         }
 
         .container {
@@ -60,40 +58,45 @@
             padding: 15px;
             border-radius: 16px;
             box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
-            margin-top: 20px;
+            margin-top: 15px;
             box-sizing: border-box;
         }
 
-        #status-db {
-            font-size: 0.8rem;
-            margin-bottom: 10px;
-            padding: 8px;
-            border-radius: 8px;
-            background: #f1f5f9;
-            text-align: center;
+        #reader { 
+            width: 100%; 
+            border-radius: 12px; 
+            overflow: hidden; 
+            background: #000;
+            min-height: 300px;
+        }
+        
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 15px 0;
         }
 
-        #reader { width: 100%; border-radius: 12px; overflow: hidden; border: none !important; }
-        
-        #reader button {
-            padding: 12px 18px;
+        button {
+            padding: 12px 20px;
             background-color: var(--primary);
             color: white;
             border: none;
-            border-radius: 8px;
+            border-radius: 10px;
             font-weight: 600;
-            margin: 8px 2px;
             cursor: pointer;
             font-size: 0.9rem;
+            transition: opacity 0.2s;
         }
 
+        button:active { opacity: 0.8; }
+
         #result-container {
-            margin-top: 20px;
+            margin-top: 15px;
             min-height: 110px;
             display: flex;
-            flex-direction: column;
-            justify-content: center;
             align-items: center;
+            justify-content: center;
             border-radius: 12px;
             border: 2px dashed #cbd5e1;
         }
@@ -104,7 +107,6 @@
             text-align: center;
             border-radius: 10px;
             animation: slideUp 0.3s ease-out;
-            box-sizing: border-box;
         }
 
         .defect { background: #fee2e2; color: var(--danger); border: 2px solid var(--danger); }
@@ -133,56 +135,36 @@
     </div>
 
     <div class="container">
-        <div id="status-db">⏳</div>
         <div id="reader"></div>
+        <div class="controls">
+            <button id="btn-start" onclick="startCamera()">📷 Démarrer</button>
+            <button id="btn-stop" onclick="stopCamera()" style="display:none; background:#64748b;">Arrêter</button>
+            <button id="btn-flash" onclick="toggleFlash()" style="display:none; background:#f59e0b;">⚡ Flash</button>
+        </div>
         <div id="result-container">
-            <div id="result-content">---</div>
+            <div id="result-content" style="width:100%; text-align:center; color:#94a3b8;">---</div>
         </div>
     </div>
 
     <script>
         const i18n = {
-            fr: { 
-                title: "PSU ConnectBox", 
-                loading: "⏳ Chargement...", 
-                scanPrompt: "Scannez un code-barres", 
-                statusOk: "PSU OK", 
-                statusDefect: "PSU défectueux, à remplacer", 
-                errorDb: "⚠️ data.json introuvable",
-                sc: { perm: "Caméra", stop: "Arrêter", flash: "Flash" }
-            },
-            en: { 
-                title: "PSU ConnectBox", 
-                loading: "⏳ Loading...", 
-                scanPrompt: "Scan a barcode", 
-                statusOk: "PSU OK", 
-                statusDefect: "Defective PSU, to replace", 
-                errorDb: "⚠️ data.json not found",
-                sc: { perm: "Camera", stop: "Stop", flash: "Flash" }
-            },
-            de: { 
-                title: "PSU ConnectBox", 
-                loading: "⏳ Laden...", 
-                scanPrompt: "Barcode scannen", 
-                statusOk: "PSU OK", 
-                statusDefect: "Defektes PSU, zu ersetzen", 
-                errorDb: "⚠️ data.json nicht gefunden",
-                sc: { perm: "Kamera", stop: "Stopp", flash: "Flash" }
-            }
+            fr: { title: "PSU ConnectBox", scanPrompt: "Prêt au scan", statusOk: "PSU OK", statusDefect: "PSU défectueux", btnStart: "📷 Démarrer", btnStop: "Arrêter" },
+            en: { title: "PSU ConnectBox", scanPrompt: "Ready to scan", statusOk: "PSU OK", statusDefect: "Defective PSU", btnStart: "📷 Start", btnStop: "Stop" },
+            de: { title: "PSU ConnectBox", scanPrompt: "Bereit zum Scannen", statusOk: "PSU OK", statusDefect: "PSU Defekt", btnStart: "📷 Starten", btnStop: "Stopp" }
         };
 
-        let currentLang = localStorage.getItem('userLang') || (navigator.language.startsWith('de') ? 'de' : (navigator.language.startsWith('fr') ? 'fr' : 'en'));
+        let currentLang = localStorage.getItem('userLang') || 'fr';
         let serialsSet = new Set();
+        let html5QrCode;
+        let isFlashOn = false;
         let lastScannedCode = null;
 
         function updateUI() {
             const t = i18n[currentLang];
             document.getElementById('txt-title').innerText = t.title;
             document.getElementById('lang-select').value = currentLang;
-            const statusDiv = document.getElementById('status-db');
-            if (statusDiv.style.display !== "none") statusDiv.innerText = t.loading;
-            const resultContent = document.getElementById('result-content');
-            if (!resultContent.querySelector('.status-card')) resultContent.innerText = t.scanPrompt;
+            document.getElementById('btn-start').innerText = t.btnStart;
+            document.getElementById('btn-stop').innerText = t.btnStop;
         }
 
         function setLang(lang) {
@@ -197,17 +179,46 @@
         }
 
         fetch('data.json')
-            .then(res => { if (!res.ok) throw new Error(); return res.json(); })
-            .then(data => {
-                serialsSet = new Set(data);
-                document.getElementById('status-db').style.display = "none";
-                updateUI();
-            })
-            .catch(() => {
-                const s = document.getElementById('status-db');
-                s.innerText = i18n[currentLang].errorDb;
-                s.style.color = "var(--danger)";
+            .then(res => res.json())
+            .then(data => { serialsSet = new Set(data); })
+            .catch(() => console.error("Erreur data.json"));
+
+        function startCamera() {
+            html5QrCode = new Html5Qrcode("reader");
+            const config = { 
+                fps: 20, 
+                qrbox: (w, h) => { return { width: w * 0.9, height: h * 0.4 }; },
+                formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128 ]
+            };
+
+            // Force l'utilisation de la caméra arrière principale
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                config, 
+                onScanSuccess
+            ).then(() => {
+                document.getElementById('btn-start').style.display = 'none';
+                document.getElementById('btn-stop').style.display = 'inline-block';
+                document.getElementById('btn-flash').style.display = 'inline-block';
+                document.getElementById('result-content').innerText = i18n[currentLang].scanPrompt;
+            }).catch(err => {
+                alert("Erreur Caméra : Assurez-vous d'autoriser l'accès.");
+                console.error(err);
             });
+        }
+
+        function stopCamera() {
+            if (html5QrCode) {
+                html5QrCode.stop().then(() => location.reload());
+            }
+        }
+
+        function toggleFlash() {
+            isFlashOn = !isFlashOn;
+            html5QrCode.applyVideoConstraints({
+                advanced: [{ torch: isFlashOn }]
+            }).catch(() => alert("Le flash n'est pas disponible sur cet objectif."));
+        }
 
         async function onScanSuccess(decodedText) {
             const cleanText = decodedText.trim().toUpperCase();
@@ -230,34 +241,6 @@
             setTimeout(() => { lastScannedCode = null; }, 3000);
         }
 
-        // Config Scanner Haute Performance
-        const scT = i18n[currentLang].sc;
-        const scanner = new Html5QrcodeScanner("reader", { 
-            fps: 20, 
-            qrbox: function(viewfinderWidth, viewfinderHeight) {
-                // Rectangle large et court pour les codes-barres horizontaux
-                return { width: viewfinderWidth * 0.9, height: viewfinderHeight * 0.4 };
-            },
-            aspectRatio: 1.0,
-            videoConstraints: {
-                facingMode: "environment",
-                width: { min: 640, ideal: 1280, max: 1920 },
-                height: { min: 480, ideal: 720, max: 1080 }
-            },
-            formatsToSupport: [ Html5QrcodeSupportedFormats.CODE_128 ], // Format spécifique PSU
-            rememberLastUsedCamera: true,
-            supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
-            showTorchButtonIfSupported: true,
-            i18n: {
-                "permissions-button": scT.perm,
-                "scanner-stop": scT.stop,
-                "torch-button": scT.flash
-            }
-        });
-        
-        scanner.render(onScanSuccess);
-
-        if ('serviceWorker' in navigator) { navigator.serviceWorker.register('./sw.js'); }
         updateUI();
     </script>
 </body>
